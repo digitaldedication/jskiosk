@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Jos Scholman Showroom</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    :root {
+      --blue: #0056A3;
+      --blue-dark: #004080;
+      --yellow: #FDC300;
+      --white: #FFFFFF;
+      --black: #000000;
+    }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--blue);
+      color: var(--white);
+      touch-action: pan-x;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    /* ===== SCREENS ===== */
+    .screen {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    .screen.active { opacity: 1; pointer-events: all; }
+
+    /* ===== HOME SCREEN ===== */
+    #home {
+      background-image: url('background-home.jpg');
+      background-size: cover;
+      background-position: center;
+    }
+    .logo-area {
+      flex: 0.38;
+      cursor: pointer;
+    }
+    .cards-row {
+      flex: 0.62;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 32px;
+      padding: 0 48px 24px;
+    }
+    .card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .card:active { transform: scale(0.96); }
+    .card-img {
+      flex: 1;
+      width: 100%;
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      overflow: hidden;
+      position: relative;
+    }
+    .card-img img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .card-img .placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      color: #ccc; font-size: 14px;
+    }
+    .card h2 {
+      margin-top: 12px;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* ===== VIEWER SCREEN ===== */
+    #viewer { background: var(--black); }
+
+    .swiper-container {
+      flex: 1; position: relative; overflow: hidden;
+    }
+    .slide-wrapper {
+      display: flex; height: 100%;
+      transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    .slide {
+      min-width: 100%; height: 100%;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .slide img.media {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .slide video.media {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+
+    /* Label bar */
+    .slide-label {
+      position: absolute;
+      bottom: 32px;
+      left: 50%; transform: translateX(-50%);
+      background: var(--white);
+      border-radius: 16px;
+      padding: 16px 40px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      max-width: 80%;
+    }
+    .slide-label span {
+      color: var(--blue);
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    /* Back button */
+    .back-btn {
+      position: absolute;
+      top: 24px; left: 24px;
+      width: 80px; height: 80px;
+      cursor: pointer;
+      z-index: 10;
+      transition: transform 0.2s;
+    }
+    .back-btn:active { transform: scale(0.9); }
+
+    /* Swipe icon */
+    .swipe-icon {
+      position: absolute;
+      bottom: 24px; right: 24px;
+      width: 72px; height: 72px;
+      z-index: 10;
+      opacity: 0.85;
+      transition: opacity 0.3s;
+    }
+    .swipe-icon.hidden { opacity: 0; pointer-events: none; }
+
+    /* ===== LOADING ===== */
+    .empty-msg {
+      color: #666; font-size: 16px;
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HOME -->
+  <div id="home" class="screen active">
+    <div class="logo-area" id="logoArea"></div>
+    <div class="cards-row">
+      <div class="card" onclick="openCategory('infra')">
+        <div class="card-img"><img id="coverInfra" src="" alt="Infra" onerror="this.parentElement.innerHTML='<div class=placeholder>Infra</div>'"></div>
+        <h2>Infra</h2>
+      </div>
+      <div class="card" onclick="openCategory('groen')">
+        <div class="card-img"><img id="coverGroen" src="" alt="Groen" onerror="this.parentElement.innerHTML='<div class=placeholder>Groen</div>'"></div>
+        <h2>Groen</h2>
+      </div>
+      <div class="card" onclick="openCategory('sport')">
+        <div class="card-img"><img id="coverSport" src="" alt="Sport" onerror="this.parentElement.innerHTML='<div class=placeholder>Sport</div>'"></div>
+        <h2>Sport</h2>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEWER -->
+  <div id="viewer" class="screen">
+    <div class="swiper-container" id="swiperContainer">
+      <div class="slide-wrapper" id="slideWrapper"></div>
+      <img class="back-btn" id="backBtn" src="back-button.png" alt="Terug">
+      <img class="swipe-icon" id="swipeIcon" src="swipe-icon.png" alt="Swipe">
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIG =====
+    const CATEGORIES = ['infra', 'groen', 'sport'];
+    const BASE = window.location.href.replace(/\/[^/]*$/, '');
+    const IMAGE_DELAY = 7000;
+
+    // ===== STATE =====
+    let currentCategory = null;
+    let currentIndex = 0;
+    let mediaItems = [];
+    let autoplayTimer = null;
+    let userSwiped = false;
+
+    // ===== KIOSK EXIT =====
+    let logoTaps = 0;
+    let lastLogoTap = 0;
+    document.getElementById('logoArea').addEventListener('click', () => {
+      const now = Date.now();
+      if (now - lastLogoTap > 1500) logoTaps = 0;
+      lastLogoTap = now;
+      logoTaps++;
+      if (logoTaps >= 3) {
+        logoTaps = 0;
+        // Exit fullscreen if in fullscreen
+        if (document.fullscreenElement) document.exitFullscreen();
+        alert('Kiosk mode uitgeschakeld');
+      }
+    });
+
+    // ===== INIT =====
+    function init() {
+      CATEGORIES.forEach(cat => {
+        const img = document.getElementById('cover' + cat.charAt(0).toUpperCase() + cat.slice(1));
+        if (img) img.src = `${BASE}/media/${cat}/cover.jpg?t=${Date.now()}`;
+      });
+    }
+
+    // ===== SCREENS =====
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    // ===== OPEN CATEGORY =====
+    async function openCategory(catId) {
+      currentCategory = catId;
+      userSwiped = false;
+
+      try {
+        const res = await fetch(`${BASE}/media/${catId}/index.json?t=${Date.now()}`);
+        if (!res.ok) throw new Error();
+        mediaItems = await res.json();
+      } catch {
+        mediaItems = [];
+      }
+
+      if (mediaItems.length === 0) {
+        alert('Geen media gevonden in deze categorie');
+        return;
+      }
+
+      currentIndex = 0;
+      renderSlides();
+      updateSlide();
+      showScreen('viewer');
+
+      // Show/hide swipe icon
+      const icon = document.getElementById('swipeIcon');
+      icon.classList.toggle('hidden', mediaItems.length <= 1);
+
+      // Start autoplay
+      startAutoplay();
+    }
+
+    // ===== RENDER =====
+    function renderSlides() {
+      const wrapper = document.getElementById('slideWrapper');
+      wrapper.innerHTML = mediaItems.map((item, i) => {
+        const src = `${BASE}/media/${currentCategory}/${item.file}`;
+        let mediaEl;
+        if (item.type === 'video') {
+          mediaEl = `<video class="media" data-index="${i}" playsinline preload="metadata" src="${src}"></video>`;
+        } else {
+          mediaEl = `<img class="media" src="${src}" alt="${item.label}" draggable="false">`;
+        }
+        return `<div class="slide">${mediaEl}<div class="slide-label"><span>${item.label}</span></div></div>`;
+      }).join('');
+    }
+
+    function updateSlide() {
+      const wrapper = document.getElementById('slideWrapper');
+      wrapper.style.transform = `translateX(-${currentIndex * 100}%)`;
+
+      // Pause all videos
+      wrapper.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; });
+
+      // Play current if video
+      const currentSlide = wrapper.children[currentIndex];
+      const video = currentSlide?.querySelector('video');
+      if (video) {
+        video.play();
+        // Listen for video end
+        video.onended = () => {
+          setTimeout(() => advanceSlide(), 500);
+        };
+      }
+    }
+
+    function advanceSlide() {
+      if (currentIndex < mediaItems.length - 1) {
+        currentIndex++;
+      } else {
+        currentIndex = 0; // loop
+      }
+      updateSlide();
+      startAutoplay();
+    }
+
+    function goToSlide(index) {
+      if (index < 0 || index >= mediaItems.length) return;
+      currentIndex = index;
+      updateSlide();
+      startAutoplay();
+    }
+
+    // ===== AUTOPLAY =====
+    function startAutoplay() {
+      clearAutoplay();
+      const item = mediaItems[currentIndex];
+      if (item && item.type === 'image') {
+        autoplayTimer = setTimeout(() => advanceSlide(), IMAGE_DELAY);
+      }
+      // Videos auto-advance via onended
+    }
+
+    function clearAutoplay() {
+      if (autoplayTimer) { clearTimeout(autoplayTimer); autoplayTimer = null; }
+    }
+
+    // ===== BACK =====
+    document.getElementById('backBtn').addEventListener('click', () => {
+      clearAutoplay();
+      const wrapper = document.getElementById('slideWrapper');
+      wrapper.querySelectorAll('video').forEach(v => v.pause());
+      currentCategory = null;
+      mediaItems = [];
+      showScreen('home');
+    });
+
+    // ===== TOUCH SWIPE =====
+    let touchStartX = 0, touchMoveX = 0, isDragging = false;
+    const container = document.getElementById('swiperContainer');
+
+    container.addEventListener('touchstart', (e) => {
+      if (e.target.tagName === 'VIDEO') return;
+      touchStartX = e.touches[0].clientX;
+      touchMoveX = touchStartX;
+      isDragging = true;
+      document.getElementById('slideWrapper').style.transition = 'none';
+      clearAutoplay();
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      touchMoveX = e.touches[0].clientX;
+      const diff = touchMoveX - touchStartX;
+      const offset = -(currentIndex * container.offsetWidth) + diff;
+      document.getElementById('slideWrapper').style.transform = `translateX(${offset}px)`;
+    }, { passive: true });
+
+    container.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      const wrapper = document.getElementById('slideWrapper');
+      wrapper.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)';
+      const diff = touchMoveX - touchStartX;
+      const threshold = container.offsetWidth * 0.15;
+
+      // Hide swipe icon after first swipe
+      if (Math.abs(diff) > 20) {
+        userSwiped = true;
+        document.getElementById('swipeIcon').classList.add('hidden');
+      }
+
+      if (diff < -threshold && currentIndex < mediaItems.length - 1) {
+        goToSlide(currentIndex + 1);
+      } else if (diff > threshold && currentIndex > 0) {
+        goToSlide(currentIndex - 1);
+      } else {
+        updateSlide();
+        startAutoplay();
+      }
+    });
+
+    // ===== KEYBOARD =====
+    document.addEventListener('keydown', (e) => {
+      if (!currentCategory) return;
+      if (e.key === 'ArrowLeft') goToSlide(currentIndex - 1);
+      if (e.key === 'ArrowRight') goToSlide(currentIndex + 1);
+      if (e.key === 'Escape') document.getElementById('backBtn').click();
+    });
+
+    // ===== FULLSCREEN on first touch =====
+    document.body.addEventListener('click', () => {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    }, { once: true });
+
+    // ===== START =====
+    init();
+  </script>
+</body>
+</html>

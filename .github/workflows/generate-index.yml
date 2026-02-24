@@ -1,0 +1,59 @@
+name: Generate Media Index
+
+on:
+  push:
+    paths:
+      - 'media/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate index.json files
+        run: |
+          for category in infra groen sport; do
+            dir="media/$category"
+            if [ -d "$dir" ]; then
+              echo "[" > "$dir/index.json"
+              first=true
+              for file in "$dir"/*; do
+                filename=$(basename "$file")
+                if [ "$filename" = "index.json" ] || [[ "$filename" == .* ]] || [ "$filename" = "cover.jpg" ]; then
+                  continue
+                fi
+                ext="${filename##*.}"
+                ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+                if [[ "$ext_lower" =~ ^(jpg|jpeg|png|webp|mp4|mov|webm)$ ]]; then
+                  if [[ "$ext_lower" =~ ^(mp4|mov|webm)$ ]]; then
+                    type="video"
+                  else
+                    type="image"
+                  fi
+                  name_no_ext="${filename%.*}"
+                  label=$(echo "$name_no_ext" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')
+                  if [ "$first" = true ]; then
+                    first=false
+                  else
+                    echo "," >> "$dir/index.json"
+                  fi
+                  printf '  {"file": "%s", "label": "%s", "type": "%s"}' "$filename" "$label" "$type" >> "$dir/index.json"
+                fi
+              done
+              echo "" >> "$dir/index.json"
+              echo "]" >> "$dir/index.json"
+            fi
+          done
+
+      - name: Commit index files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add media/*/index.json
+          git diff --staged --quiet || git commit -m "Auto-generate media index files"
+          git push
