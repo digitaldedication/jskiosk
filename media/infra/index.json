@@ -1,3 +1,19 @@
 [
-
+  {"file": "Almere Nobelhorst.jpg", "label": "Almere Nobelhorst", "type": "image"},
+  {"file": "Asfalteren in Almere.jpg", "label": "Asfalteren In Almere", "type": "image"},
+  {"file": "Bouwrijp maken Almere.jpg", "label": "Bouwrijp Maken Almere", "type": "image"},
+  {"file": "Bouwrijp maken bedrijventerrein Almere.jpg", "label": "Bouwrijp Maken Bedrijventerrein Almere", "type": "image"},
+  {"file": "Cover.jpg", "label": "Cover", "type": "image"},
+  {"file": "Fietspad.jpg", "label": "Fietspad", "type": "image"},
+  {"file": "Freeswerk Laan van Rijnhuizen Utrecht (2).jpg", "label": "Freeswerk Laan Van Rijnhuizen Utrecht (2)", "type": "image"},
+  {"file": "Freeswerk Laan van Rijnhuizen Utrecht (3).jpg", "label": "Freeswerk Laan Van Rijnhuizen Utrecht (3)", "type": "image"},
+  {"file": "Freeswerk Laan van Rijnhuizen Utrecht.jpg", "label": "Freeswerk Laan Van Rijnhuizen Utrecht", "type": "image"},
+  {"file": "Graafwerkzaamheden Amsterdam.jpg", "label": "Graafwerkzaamheden Amsterdam", "type": "image"},
+  {"file": "Graafwerkzaamheden Den Bosch.jpg", "label": "Graafwerkzaamheden Den Bosch", "type": "image"},
+  {"file": "Graafwerkzaamheden.jpg", "label": "Graafwerkzaamheden", "type": "image"},
+  {"file": "Herinrichting kruispunt IJsselstein (2).jpg", "label": "Herinrichting Kruispunt IJsselstein (2)", "type": "image"},
+  {"file": "Herinrichting kruispunt IJsselstein (3).jpg", "label": "Herinrichting Kruispunt IJsselstein (3)", "type": "image"},
+  {"file": "Herinrichting kruispunt IJsselstein.jpg", "label": "Herinrichting Kruispunt IJsselstein", "type": "image"},
+  {"file": "Kabelgoot graven Almere (2).jpg", "label": "Kabelgoot Graven Almere (2)", "type": "image"},
+  {"file": "Kabelgoot graven Almere.jpg", "label": "Kabelgoot Graven Almere", "type": "image"}
 ]

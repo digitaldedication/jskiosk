@@ -1,3 +1,27 @@
 [
-
+  {"file": "Aanleg sportvelden (2).jpg", "label": "Aanleg Sportvelden (2)", "type": "image"},
+  {"file": "Aanleg sportvelden (3).jpg", "label": "Aanleg Sportvelden (3)", "type": "image"},
+  {"file": "Aanleg sportvelden.jpg", "label": "Aanleg Sportvelden", "type": "image"},
+  {"file": "Cover.jpg", "label": "Cover", "type": "image"},
+  {"file": "Golfbaan Den Bosch (2).jpg", "label": "Golfbaan Den Bosch (2)", "type": "image"},
+  {"file": "Golfbaan Den Bosch (3).jpg", "label": "Golfbaan Den Bosch (3)", "type": "image"},
+  {"file": "Golfbaan Den Bosch (4).jpg", "label": "Golfbaan Den Bosch (4)", "type": "image"},
+  {"file": "Golfbaan Den Bosch.jpg", "label": "Golfbaan Den Bosch", "type": "image"},
+  {"file": "Onderhoud Waterland (2).jpg", "label": "Onderhoud Waterland (2)", "type": "image"},
+  {"file": "Onderhoud Waterland.jpg", "label": "Onderhoud Waterland", "type": "image"},
+  {"file": "Onderhoud golfvenue Chichi.jpg", "label": "Onderhoud Golfvenue Chichi", "type": "image"},
+  {"file": "Onderhoud sport.jpg", "label": "Onderhoud Sport", "type": "image"},
+  {"file": "Onderhoud sportaccommodaties.jpg", "label": "Onderhoud Sportaccommodaties", "type": "image"},
+  {"file": "Onderhoud sportvelden (2).jpg", "label": "Onderhoud Sportvelden (2)", "type": "image"},
+  {"file": "Onderhoud sportvelden.jpg", "label": "Onderhoud Sportvelden", "type": "image"},
+  {"file": "Reconstructie korfbalveld Nieuwpoort.jpg", "label": "Reconstructie Korfbalveld Nieuwpoort", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk (2).jpg", "label": "Renovatie Golfbaan Noordwijk (2)", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk (3).jpg", "label": "Renovatie Golfbaan Noordwijk (3)", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk (4).jpg", "label": "Renovatie Golfbaan Noordwijk (4)", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk (5).jpg", "label": "Renovatie Golfbaan Noordwijk (5)", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk (6).jpg", "label": "Renovatie Golfbaan Noordwijk (6)", "type": "image"},
+  {"file": "Renovatie Golfbaan Noordwijk.jpg", "label": "Renovatie Golfbaan Noordwijk", "type": "image"},
+  {"file": "VV Maarssen.jpg", "label": "VV Maarssen", "type": "image"},
+  {"file": "Video over Jos Scholman.mp4", "label": "Video Over Jos Scholman", "type": "video"},
+  {"file": "Waterstof bij Jos Scholman.mp4", "label": "Waterstof Bij Jos Scholman", "type": "video"}
 ]
