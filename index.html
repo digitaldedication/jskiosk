@@ -379,28 +379,25 @@
       showScreen('home');
     });
 
-    // ===== TOUCH SWIPE =====
+    // ===== TOUCH + MOUSE SWIPE =====
     let touchStartX = 0, touchMoveX = 0, isDragging = false;
     const container = document.getElementById('swiperContainer');
 
-    container.addEventListener('touchstart', (e) => {
-      if (e.target.tagName === 'VIDEO') return;
-      touchStartX = e.touches[0].clientX;
-      touchMoveX = touchStartX;
+    function onDragStart(x, e) {
+      if (e && e.target && e.target.tagName === 'VIDEO') return;
+      touchStartX = x; touchMoveX = x;
       isDragging = true;
       document.getElementById('slideWrapper').style.transition = 'none';
       clearAutoplay();
-    }, { passive: true });
-
-    container.addEventListener('touchmove', (e) => {
+    }
+    function onDragMove(x) {
       if (!isDragging) return;
-      touchMoveX = e.touches[0].clientX;
+      touchMoveX = x;
       const diff = touchMoveX - touchStartX;
       const offset = -(currentIndex * container.offsetWidth) + diff;
       document.getElementById('slideWrapper').style.transform = `translateX(${offset}px)`;
-    }, { passive: true });
-
-    container.addEventListener('touchend', () => {
+    }
+    function onDragEnd() {
       if (!isDragging) return;
       isDragging = false;
       const wrapper = document.getElementById('slideWrapper');
@@ -408,7 +405,6 @@
       const diff = touchMoveX - touchStartX;
       const threshold = container.offsetWidth * 0.15;
 
-      // Hide swipe icon after first swipe
       if (Math.abs(diff) > 20) {
         userSwiped = true;
         document.getElementById('swipeIcon').classList.add('hidden');
@@ -422,7 +418,18 @@
         updateSlide();
         startAutoplay();
       }
-    });
+    }
+
+    // Touch events
+    container.addEventListener('touchstart', (e) => onDragStart(e.touches[0].clientX, e), { passive: true });
+    container.addEventListener('touchmove', (e) => onDragMove(e.touches[0].clientX), { passive: true });
+    container.addEventListener('touchend', onDragEnd);
+
+    // Mouse events (desktop)
+    container.addEventListener('mousedown', (e) => { e.preventDefault(); onDragStart(e.clientX, e); });
+    container.addEventListener('mousemove', (e) => { if (isDragging) { e.preventDefault(); onDragMove(e.clientX); } });
+    container.addEventListener('mouseup', onDragEnd);
+    container.addEventListener('mouseleave', () => { if (isDragging) onDragEnd(); });
 
     // ===== KEYBOARD =====
     document.addEventListener('keydown', (e) => {
