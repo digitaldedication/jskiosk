@@ -226,11 +226,30 @@
     });
 
     // ===== INIT =====
-    function init() {
-      CATEGORIES.forEach(cat => {
+    async function init() {
+      for (const cat of CATEGORIES) {
         const img = document.getElementById('cover' + cat.charAt(0).toUpperCase() + cat.slice(1));
-        if (img) img.src = `${BASE}/media/${cat}/cover.jpg?t=${Date.now()}`;
-      });
+        if (!img) continue;
+
+        // Try cover.jpg first
+        img.src = `${BASE}/media/${cat}/cover.jpg?t=${Date.now()}`;
+        img.onerror = async function() {
+          // No cover.jpg — use first image from index.json
+          try {
+            const res = await fetch(`${BASE}/media/${cat}/index.json?t=${Date.now()}`);
+            if (!res.ok) throw new Error();
+            const items = await res.json();
+            const firstImage = items.find(i => i.type === 'image');
+            if (firstImage) {
+              this.src = `${BASE}/media/${cat}/${firstImage.file}`;
+            } else {
+              this.parentElement.innerHTML = '<div class="placeholder">' + cat + '</div>';
+            }
+          } catch {
+            this.parentElement.innerHTML = '<div class="placeholder">' + cat + '</div>';
+          }
+        };
+      }
     }
 
     // ===== SCREENS =====
@@ -327,7 +346,10 @@
     }
 
     function goToSlide(index) {
-      if (index < 0 || index >= mediaItems.length) return;
+      if (mediaItems.length === 0) return;
+      // Wrap around for infinite loop
+      if (index >= mediaItems.length) index = 0;
+      if (index < 0) index = mediaItems.length - 1;
       currentIndex = index;
       updateSlide();
       startAutoplay();
@@ -392,9 +414,9 @@
         document.getElementById('swipeIcon').classList.add('hidden');
       }
 
-      if (diff < -threshold && currentIndex < mediaItems.length - 1) {
+      if (diff < -threshold) {
         goToSlide(currentIndex + 1);
-      } else if (diff > threshold && currentIndex > 0) {
+      } else if (diff > threshold) {
         goToSlide(currentIndex - 1);
       } else {
         updateSlide();
