@@ -102,6 +102,8 @@
     .queue-item {
       background: white; border: 1px solid var(--border); border-radius: 8px;
       padding: 12px 16px; margin-bottom: 8px;
+    }
+    .queue-item .row {
       display: flex; align-items: center; gap: 12px;
     }
     .queue-item .name { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -113,8 +115,19 @@
       height: 100%; background: var(--blue); width: 0%; transition: width 0.2s;
     }
     .queue-item.done .progress-bar { background: var(--success); }
+    .queue-item.error { border-color: var(--danger); }
     .queue-item.error .progress-bar { background: var(--danger); }
-    .queue-item .status-icon { font-size: 16px; }
+    .queue-item .status-icon { font-size: 16px; cursor: pointer; user-select: none; }
+    .queue-item .error-msg {
+      margin-top: 8px; padding: 8px 10px;
+      background: #fdecea; border-radius: 6px;
+      color: var(--danger); font-size: 12px; line-height: 1.4;
+      word-break: break-word; white-space: pre-wrap; display: none;
+    }
+    .queue-item.error .error-msg { display: block; }
+    .queue-item .remove-btn {
+      background: none; padding: 0 6px; color: var(--muted); font-size: 18px;
+    }
 
     /* Media grid */
     .grid {
@@ -355,73 +368,94 @@
       }
     }
 
-    async function uploadFile(category, file, onProgress) {
-      // Read as base64
-      const base64 = await new Promise((resolve, reject) => {
+    // ===== UPLOAD/DELETE via Git Database API =====
+    // The Contents API caps out around ~25MB; the Git Database API handles up
+    // to 100MB per blob and gives clearer errors when things go wrong.
+
+    async function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result;
-          const b64 = result.split(',')[1];
-          resolve(b64);
+          resolve(result.split(',')[1]);
         };
-        reader.onerror = reject;
+        reader.onerror = () => reject(new Error('Kon bestand niet lezen'));
         reader.readAsDataURL(file);
       });
-      onProgress(40);
+    }
 
-      // Check if file already exists (need its sha to overwrite)
-      let existingSha = null;
-      try {
-        const existing = await gh(`/contents/media/${category}/${encodeURIComponent(file.name)}?ref=${config.branch}`);
-        existingSha = existing.sha;
-      } catch {}
+    /** Commit one or more tree changes atomically. Tree entries:
+     *  - { path, mode, type:'blob', sha }    → add/update
+     *  - { path, mode, type:'blob', sha:null} → delete
+     */
+    async function commitTreeChanges(changes, message) {
+      const ref = await gh(`/git/refs/heads/${config.branch}`);
+      const parentCommitSha = ref.object.sha;
+      const parentCommit = await gh(`/git/commits/${parentCommitSha}`);
+      const baseTreeSha = parentCommit.tree.sha;
 
-      onProgress(60);
-
-      const body = {
-        message: existingSha
-          ? `Vervang ${category}/${file.name} via admin`
-          : `Voeg ${category}/${file.name} toe via admin`,
-        content: base64,
-        branch: config.branch,
-      };
-      if (existingSha) body.sha = existingSha;
-
-      await gh(`/contents/media/${category}/${encodeURIComponent(file.name)}`, {
-        method: 'PUT',
-        body,
+      const newTree = await gh('/git/trees', {
+        method: 'POST',
+        body: { base_tree: baseTreeSha, tree: changes },
       });
+      const commit = await gh('/git/commits', {
+        method: 'POST',
+        body: { message, tree: newTree.sha, parents: [parentCommitSha] },
+      });
+      await gh(`/git/refs/heads/${config.branch}`, {
+        method: 'PATCH',
+        body: { sha: commit.sha },
+      });
+    }
+
+    async function uploadFile(category, file, onProgress) {
+      onProgress(5);
+      const base64 = await fileToBase64(file);
+      onProgress(35);
+
+      // Create a blob — content can be up to 100MB base64.
+      const blob = await gh('/git/blobs', {
+        method: 'POST',
+        body: { content: base64, encoding: 'base64' },
+      });
+      onProgress(75);
+
+      await commitTreeChanges(
+        [{
+          path: `media/${category}/${file.name}`,
+          mode: '100644',
+          type: 'blob',
+          sha: blob.sha,
+        }],
+        `Upload ${category}/${file.name} via admin`,
+      );
       onProgress(100);
     }
 
-    async function deleteFile(category, filename, sha) {
-      await gh(`/contents/media/${category}/${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-        body: {
-          message: `Verwijder ${category}/${filename} via admin`,
-          sha,
-          branch: config.branch,
-        },
-      });
+    async function deleteFile(category, filename) {
+      await commitTreeChanges(
+        [{
+          path: `media/${category}/${filename}`,
+          mode: '100644',
+          type: 'blob',
+          sha: null,
+        }],
+        `Verwijder ${category}/${filename} via admin`,
+      );
     }
 
-    async function setCover(category, filename, sha) {
-      // Download the file content, then write it as cover.jpg
-      const file = await gh(`/contents/media/${category}/${encodeURIComponent(filename)}?ref=${config.branch}`);
-      const content = file.content; // base64
-      // Check existing cover
-      let coverSha = null;
-      try {
-        const existing = await gh(`/contents/media/${category}/cover.jpg?ref=${config.branch}`);
-        coverSha = existing.sha;
-      } catch {}
-      const body = {
-        message: `Cover ingesteld op ${filename} voor ${category}`,
-        content: content.replace(/\n/g, ''),
-        branch: config.branch,
-      };
-      if (coverSha) body.sha = coverSha;
-      await gh(`/contents/media/${category}/cover.jpg`, { method: 'PUT', body });
+    async function setCover(category, filename) {
+      // Reuse the source file's existing blob — no re-upload needed.
+      const src = await gh(`/contents/media/${category}/${encodeURIComponent(filename)}?ref=${config.branch}`);
+      await commitTreeChanges(
+        [{
+          path: `media/${category}/cover.jpg`,
+          mode: '100644',
+          type: 'blob',
+          sha: src.sha,
+        }],
+        `Cover ingesteld op ${filename} voor ${category}`,
+      );
     }
 
     // ===== UI =====
@@ -468,8 +502,8 @@
               <div class="filename" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
             </div>
             <div class="actions">
-              ${!isVideo ? `<button class="btn-link" onclick="handleSetCover('${safeName}','${item.sha}')">Als cover</button>` : ''}
-              <button class="btn-link" style="color:var(--danger);" onclick="handleDelete('${safeName}','${item.sha}')">Verwijder</button>
+              ${!isVideo ? `<button class="btn-link" onclick="handleSetCover('${safeName}')">Als cover</button>` : ''}
+              <button class="btn-link" style="color:var(--danger);" onclick="handleDelete('${safeName}')">Verwijder</button>
             </div>
           </div>
         `;
@@ -480,11 +514,11 @@
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    async function handleDelete(filename, sha) {
+    async function handleDelete(filename) {
       if (!confirm(`Weet je zeker dat je "${filename}" wilt verwijderen?`)) return;
       try {
         showSync('Verwijderen...');
-        await deleteFile(currentCategory, filename, sha);
+        await deleteFile(currentCategory, filename);
         toast('Verwijderd', 'success');
         await loadAllCategories();
       } catch (e) {
@@ -494,10 +528,10 @@
       }
     }
 
-    async function handleSetCover(filename, sha) {
+    async function handleSetCover(filename) {
       try {
         showSync('Cover instellen...');
-        await setCover(currentCategory, filename, sha);
+        await setCover(currentCategory, filename);
         toast('Cover ingesteld', 'success');
         await loadAllCategories();
       } catch (e) {
@@ -545,15 +579,21 @@
         const sizeKB = (file.size / 1024 / 1024).toFixed(1) + ' MB';
         queue.insertAdjacentHTML('beforeend', `
           <div class="queue-item" id="${id}">
-            <div class="name">${escapeHtml(file.name)} <span style="color:var(--muted);">→ ${currentCategory}</span></div>
-            <div class="size">${sizeKB}</div>
-            <div class="progress"><div class="progress-bar"></div></div>
-            <div class="status-icon">⏳</div>
+            <div class="row">
+              <div class="name">${escapeHtml(file.name)} <span style="color:var(--muted);">→ ${currentCategory}</span></div>
+              <div class="size">${sizeKB}</div>
+              <div class="progress"><div class="progress-bar"></div></div>
+              <div class="status-icon">⏳</div>
+              <button class="remove-btn" title="Sluiten">×</button>
+            </div>
+            <div class="error-msg"></div>
           </div>
         `);
         const item = document.getElementById(id);
         const bar = item.querySelector('.progress-bar');
         const icon = item.querySelector('.status-icon');
+        const errBox = item.querySelector('.error-msg');
+        item.querySelector('.remove-btn').addEventListener('click', () => item.remove());
         try {
           await uploadFile(currentCategory, file, (pct) => { bar.style.width = pct + '%'; });
           item.classList.add('done');
@@ -562,7 +602,8 @@
         } catch (e) {
           item.classList.add('error');
           icon.textContent = '✗';
-          icon.title = e.message;
+          errBox.textContent = e.message || 'Onbekende fout';
+          console.error('Upload error for', file.name, e);
           toast(`Upload mislukt: ${file.name}`, 'error');
         }
       }
