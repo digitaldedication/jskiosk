@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Showroom Beheer</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --blue: #0056A3;
+      --blue-dark: #004080;
+      --yellow: #FDC300;
+      --gray: #f4f6f8;
+      --border: #e1e5ea;
+      --danger: #d33;
+      --success: #2a8;
+      --text: #1a1a1a;
+      --muted: #6a7280;
+    }
+    html, body {
+      font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--gray);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      background: var(--blue);
+      color: white;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    header h1 { font-size: 20px; font-weight: 700; }
+    header .actions { display: flex; gap: 8px; align-items: center; }
+    .status { font-size: 13px; opacity: 0.85; }
+    button {
+      font: inherit; cursor: pointer; border: none; border-radius: 6px;
+      padding: 8px 14px; transition: background 0.15s, transform 0.05s;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-primary { background: var(--yellow); color: var(--blue-dark); font-weight: 700; }
+    .btn-primary:hover { background: #ffd633; }
+    .btn-secondary { background: rgba(255,255,255,0.15); color: white; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.25); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #b22; }
+    .btn-link { background: none; color: var(--blue); padding: 4px 8px; }
+    .btn-link:hover { background: rgba(0,86,163,0.08); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+    /* Login */
+    .login-card {
+      max-width: 480px; margin: 64px auto;
+      background: white; border-radius: 12px; padding: 32px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+    .login-card h2 { margin-bottom: 8px; }
+    .login-card p { color: var(--muted); margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
+    .login-card a { color: var(--blue); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font: inherit;
+    }
+    .form-group input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+    .login-card button { width: 100%; padding: 12px; font-size: 15px; }
+
+    /* Tabs */
+    .tabs {
+      display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 2px solid var(--border);
+    }
+    .tab {
+      padding: 12px 24px; cursor: pointer; font-weight: 600;
+      border-bottom: 3px solid transparent; margin-bottom: -2px;
+      color: var(--muted); background: none; border-radius: 0;
+    }
+    .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tab .count {
+      display: inline-block; margin-left: 6px;
+      background: var(--gray); color: var(--muted);
+      padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+    }
+    .tab.active .count { background: var(--blue); color: white; }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed var(--border); border-radius: 12px;
+      padding: 40px 20px; text-align: center;
+      background: white; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 24px;
+    }
+    .dropzone.dragover { border-color: var(--blue); background: rgba(0,86,163,0.04); }
+    .dropzone p { color: var(--muted); margin-top: 8px; font-size: 14px; }
+    .dropzone strong { color: var(--text); font-size: 16px; }
+    .dropzone input { display: none; }
+
+    /* Upload queue */
+    .queue { margin-bottom: 24px; }
+    .queue-item {
+      background: white; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 16px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .queue-item .name { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue-item .size { font-size: 12px; color: var(--muted); }
+    .queue-item .progress {
+      width: 100px; height: 6px; background: var(--gray); border-radius: 3px; overflow: hidden;
+    }
+    .queue-item .progress-bar {
+      height: 100%; background: var(--blue); width: 0%; transition: width 0.2s;
+    }
+    .queue-item.done .progress-bar { background: var(--success); }
+    .queue-item.error .progress-bar { background: var(--danger); }
+    .queue-item .status-icon { font-size: 16px; }
+
+    /* Media grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+    }
+    .media-card {
+      background: white; border-radius: 8px; overflow: hidden;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+    .media-card .thumb {
+      width: 100%; aspect-ratio: 1.4; background: var(--gray);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    .media-card .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .media-card .thumb .video-badge {
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(0,0,0,0.7); color: white;
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    }
+    .media-card .info {
+      padding: 10px 12px;
+    }
+    .media-card .label {
+      font-size: 13px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .media-card .filename { font-size: 11px; color: var(--muted); margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .media-card .actions {
+      display: flex; gap: 4px; padding: 0 8px 8px;
+    }
+    .media-card .actions button { flex: 1; padding: 6px 8px; font-size: 12px; }
+    .cover-badge {
+      position: absolute; top: 8px; right: 8px;
+      background: var(--yellow); color: var(--blue-dark);
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    }
+
+    .empty {
+      text-align: center; padding: 64px 24px;
+      color: var(--muted);
+    }
+    .empty h3 { color: var(--text); margin-bottom: 8px; }
+
+    .loading {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--text); color: white;
+      padding: 12px 20px; border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      max-width: 360px;
+      z-index: 1000;
+      animation: slideUp 0.3s;
+    }
+    .toast.error { background: var(--danger); }
+    .toast.success { background: var(--success); }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } }
+
+    .hidden { display: none !important; }
+
+    .config-bar {
+      background: white; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 16px; margin-bottom: 16px;
+      font-size: 13px; color: var(--muted);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .config-bar strong { color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN VIEW -->
+  <div id="loginView">
+    <div class="login-card">
+      <h2>Showroom Beheer</h2>
+      <p>
+        Om media te uploaden naar de kiosk heb je een GitHub Personal Access Token (PAT) nodig.
+        De token wordt alleen lokaal in deze browser opgeslagen.
+      </p>
+      <p style="font-size: 13px;">
+        <strong>Eenmalig aanmaken:</strong>
+        ga naar <a href="https://github.com/settings/tokens/new?scopes=repo&description=JS%20Kiosk%20Admin" target="_blank">github.com/settings/tokens/new</a>,
+        kies scope <code>repo</code>, en kopieer de token hieronder.
+      </p>
+      <div class="form-group">
+        <label for="repoInput">Repository (eigenaar/naam)</label>
+        <input type="text" id="repoInput" placeholder="bijv. digitaldedication/jskiosk">
+      </div>
+      <div class="form-group">
+        <label for="branchInput">Branch</label>
+        <input type="text" id="branchInput" value="main">
+      </div>
+      <div class="form-group">
+        <label for="tokenInput">GitHub Personal Access Token</label>
+        <input type="password" id="tokenInput" placeholder="ghp_...">
+      </div>
+      <button class="btn-primary" onclick="login()">Inloggen</button>
+    </div>
+  </div>
+
+  <!-- ADMIN VIEW -->
+  <div id="adminView" class="hidden">
+    <header>
+      <h1>Showroom Beheer</h1>
+      <div class="actions">
+        <span class="status" id="repoStatus"></span>
+        <button class="btn-secondary" onclick="logout()">Uitloggen</button>
+      </div>
+    </header>
+    <main>
+      <div class="config-bar">
+        <span>Repository: <strong id="repoLabel"></strong></span>
+        <span>Branch: <strong id="branchLabel"></strong></span>
+        <span id="syncIndicator"></span>
+      </div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-cat="infra">Infra <span class="count" id="count-infra">0</span></button>
+        <button class="tab" data-cat="groen">Groen <span class="count" id="count-groen">0</span></button>
+        <button class="tab" data-cat="sport">Sport <span class="count" id="count-sport">0</span></button>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <strong>Sleep foto's of video's hierheen</strong>
+        <p>of klik om te bladeren · JPG, PNG, MP4, WebM · max 100MB per bestand</p>
+        <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime">
+      </div>
+
+      <div class="queue" id="queue"></div>
+
+      <div id="mediaContainer">
+        <div class="empty"><div class="loading"></div><p>Bezig met laden...</p></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ===== CONFIG =====
+    const STORAGE_KEY = 'jskiosk_admin_config';
+    let config = { repo: '', branch: 'main', token: '' };
+    let currentCategory = 'infra';
+    let mediaByCategory = { infra: [], groen: [], sport: [] };
+
+    // ===== LOGIN =====
+    function loadConfig() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        if (saved.token && saved.repo) {
+          config = { ...config, ...saved };
+          return true;
+        }
+      } catch {}
+      return false;
+    }
+
+    async function login() {
+      const repo = document.getElementById('repoInput').value.trim();
+      const branch = document.getElementById('branchInput').value.trim() || 'main';
+      const token = document.getElementById('tokenInput').value.trim();
+      if (!repo || !token) {
+        toast('Vul repository en token in', 'error');
+        return;
+      }
+      if (!repo.includes('/')) {
+        toast('Repository moet zijn in formaat eigenaar/naam', 'error');
+        return;
+      }
+      // Test auth
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repo}`, {
+          headers: { Authorization: `token ${token}` }
+        });
+        if (!res.ok) throw new Error('Geen toegang tot repo');
+      } catch (e) {
+        toast('Login mislukt: ' + e.message, 'error');
+        return;
+      }
+      config = { repo, branch, token };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      showAdmin();
+    }
+
+    function logout() {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    }
+
+    function showAdmin() {
+      document.getElementById('loginView').classList.add('hidden');
+      document.getElementById('adminView').classList.remove('hidden');
+      document.getElementById('repoLabel').textContent = config.repo;
+      document.getElementById('branchLabel').textContent = config.branch;
+      loadAllCategories();
+    }
+
+    // ===== GITHUB API =====
+    async function gh(path, opts = {}) {
+      const url = `https://api.github.com/repos/${config.repo}${path}`;
+      const headers = {
+        Authorization: `token ${config.token}`,
+        Accept: 'application/vnd.github+json',
+        ...(opts.headers || {}),
+      };
+      if (opts.body && typeof opts.body !== 'string') {
+        opts.body = JSON.stringify(opts.body);
+        headers['Content-Type'] = 'application/json';
+      }
+      const res = await fetch(url, { ...opts, headers });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`GitHub API ${res.status}: ${text.slice(0, 200)}`);
+      }
+      return res.json();
+    }
+
+    async function listMedia(category) {
+      try {
+        const items = await gh(`/contents/media/${category}?ref=${config.branch}`);
+        return items.filter(i => i.type === 'file' && !i.name.startsWith('.') && i.name !== 'index.json');
+      } catch (e) {
+        if (e.message.includes('404')) return [];
+        throw e;
+      }
+    }
+
+    async function uploadFile(category, file, onProgress) {
+      // Read as base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          const b64 = result.split(',')[1];
+          resolve(b64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      onProgress(40);
+
+      // Check if file already exists (need its sha to overwrite)
+      let existingSha = null;
+      try {
+        const existing = await gh(`/contents/media/${category}/${encodeURIComponent(file.name)}?ref=${config.branch}`);
+        existingSha = existing.sha;
+      } catch {}
+
+      onProgress(60);
+
+      const body = {
+        message: existingSha
+          ? `Vervang ${category}/${file.name} via admin`
+          : `Voeg ${category}/${file.name} toe via admin`,
+        content: base64,
+        branch: config.branch,
+      };
+      if (existingSha) body.sha = existingSha;
+
+      await gh(`/contents/media/${category}/${encodeURIComponent(file.name)}`, {
+        method: 'PUT',
+        body,
+      });
+      onProgress(100);
+    }
+
+    async function deleteFile(category, filename, sha) {
+      await gh(`/contents/media/${category}/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        body: {
+          message: `Verwijder ${category}/${filename} via admin`,
+          sha,
+          branch: config.branch,
+        },
+      });
+    }
+
+    async function setCover(category, filename, sha) {
+      // Download the file content, then write it as cover.jpg
+      const file = await gh(`/contents/media/${category}/${encodeURIComponent(filename)}?ref=${config.branch}`);
+      const content = file.content; // base64
+      // Check existing cover
+      let coverSha = null;
+      try {
+        const existing = await gh(`/contents/media/${category}/cover.jpg?ref=${config.branch}`);
+        coverSha = existing.sha;
+      } catch {}
+      const body = {
+        message: `Cover ingesteld op ${filename} voor ${category}`,
+        content: content.replace(/\n/g, ''),
+        branch: config.branch,
+      };
+      if (coverSha) body.sha = coverSha;
+      await gh(`/contents/media/${category}/cover.jpg`, { method: 'PUT', body });
+    }
+
+    // ===== UI =====
+    async function loadAllCategories() {
+      const cats = ['infra', 'groen', 'sport'];
+      for (const cat of cats) {
+        try {
+          mediaByCategory[cat] = await listMedia(cat);
+          document.getElementById(`count-${cat}`).textContent = mediaByCategory[cat].filter(i => i.name !== 'cover.jpg').length;
+        } catch (e) {
+          toast(`Fout bij laden ${cat}: ${e.message}`, 'error');
+        }
+      }
+      renderMedia();
+    }
+
+    function renderMedia() {
+      const container = document.getElementById('mediaContainer');
+      const items = mediaByCategory[currentCategory] || [];
+      const mediaItems = items.filter(i => i.name !== 'cover.jpg');
+      const coverItem = items.find(i => i.name === 'cover.jpg');
+      const coverSha = coverItem?.sha;
+
+      if (mediaItems.length === 0) {
+        container.innerHTML = `<div class="empty"><h3>Nog geen media</h3><p>Upload foto's of video's via het vak hierboven.</p></div>`;
+        return;
+      }
+
+      container.innerHTML = `<div class="grid">${mediaItems.map(item => {
+        const ext = item.name.split('.').pop().toLowerCase();
+        const isVideo = ['mp4', 'mov', 'webm'].includes(ext);
+        const label = item.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        const safeName = item.name.replace(/'/g, "\\'");
+        return `
+          <div class="media-card">
+            <div class="thumb">
+              ${isVideo
+                ? `<div style="color:#888;font-size:32px;">▶</div><div class="video-badge">VIDEO</div>`
+                : `<img src="${item.download_url}" loading="lazy" alt="">`}
+              ${coverSha === item.sha ? '' : ''}
+            </div>
+            <div class="info">
+              <div class="label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+              <div class="filename" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+            </div>
+            <div class="actions">
+              ${!isVideo ? `<button class="btn-link" onclick="handleSetCover('${safeName}','${item.sha}')">Als cover</button>` : ''}
+              <button class="btn-link" style="color:var(--danger);" onclick="handleDelete('${safeName}','${item.sha}')">Verwijder</button>
+            </div>
+          </div>
+        `;
+      }).join('')}</div>`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function handleDelete(filename, sha) {
+      if (!confirm(`Weet je zeker dat je "${filename}" wilt verwijderen?`)) return;
+      try {
+        showSync('Verwijderen...');
+        await deleteFile(currentCategory, filename, sha);
+        toast('Verwijderd', 'success');
+        await loadAllCategories();
+      } catch (e) {
+        toast('Fout: ' + e.message, 'error');
+      } finally {
+        hideSync();
+      }
+    }
+
+    async function handleSetCover(filename, sha) {
+      try {
+        showSync('Cover instellen...');
+        await setCover(currentCategory, filename, sha);
+        toast('Cover ingesteld', 'success');
+        await loadAllCategories();
+      } catch (e) {
+        toast('Fout: ' + e.message, 'error');
+      } finally {
+        hideSync();
+      }
+    }
+
+    // ===== TABS =====
+    document.getElementById('tabs').addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (!tab) return;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentCategory = tab.dataset.cat;
+      renderMedia();
+    });
+
+    // ===== UPLOAD =====
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      handleFiles(Array.from(fileInput.files));
+      fileInput.value = '';
+    });
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      handleFiles(Array.from(e.dataTransfer.files));
+    });
+
+    async function handleFiles(files) {
+      const queue = document.getElementById('queue');
+      for (const file of files) {
+        if (file.size > 100 * 1024 * 1024) {
+          toast(`${file.name} is groter dan 100MB en wordt overgeslagen`, 'error');
+          continue;
+        }
+        const id = 'q' + Math.random().toString(36).slice(2);
+        const sizeKB = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        queue.insertAdjacentHTML('beforeend', `
+          <div class="queue-item" id="${id}">
+            <div class="name">${escapeHtml(file.name)} <span style="color:var(--muted);">→ ${currentCategory}</span></div>
+            <div class="size">${sizeKB}</div>
+            <div class="progress"><div class="progress-bar"></div></div>
+            <div class="status-icon">⏳</div>
+          </div>
+        `);
+        const item = document.getElementById(id);
+        const bar = item.querySelector('.progress-bar');
+        const icon = item.querySelector('.status-icon');
+        try {
+          await uploadFile(currentCategory, file, (pct) => { bar.style.width = pct + '%'; });
+          item.classList.add('done');
+          icon.textContent = '✓';
+          setTimeout(() => item.remove(), 3000);
+        } catch (e) {
+          item.classList.add('error');
+          icon.textContent = '✗';
+          icon.title = e.message;
+          toast(`Upload mislukt: ${file.name}`, 'error');
+        }
+      }
+      await loadAllCategories();
+    }
+
+    // ===== HELPERS =====
+    function toast(msg, type = '') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    function showSync(msg) {
+      document.getElementById('syncIndicator').innerHTML = `<span class="loading"></span> ${msg}`;
+    }
+    function hideSync() {
+      document.getElementById('syncIndicator').innerHTML = '';
+    }
+
+    // ===== START =====
+    if (loadConfig()) {
+      showAdmin();
+    } else {
+      // Pre-fill repo if running on github.io
+      const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+      if (m) {
+        const pathRepo = location.pathname.split('/').filter(Boolean)[0];
+        if (pathRepo) document.getElementById('repoInput').value = `${m[1]}/${pathRepo}`;
+      }
+    }
+  </script>
+</body>
+</html>
