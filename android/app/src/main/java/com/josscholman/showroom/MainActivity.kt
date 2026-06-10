@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    private val tag = "JsKiosk"
+    private val logTag = "JsKiosk"
     private var webView: WebView? = null
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
                         return try {
                             mediaCache.tryServeFromCache(request.url.toString())
                         } catch (t: Throwable) {
-                            Log.w(tag, "intercept failed: ${t.message}")
+                            Log.w(logTag, "intercept failed: ${t.message}")
                             null
                         }
                     }
@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
 
                 webChromeClient = object : WebChromeClient() {
                     override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
-                        Log.d("$tag-WebView", "${msg.sourceId()}:${msg.lineNumber()} ${msg.message()}")
+                        Log.d("$logTag-WebView", "${msg.sourceId()}:${msg.lineNumber()} ${msg.message()}")
                         return true
                     }
                 }
@@ -102,11 +102,11 @@ class MainActivity : AppCompatActivity() {
                 try {
                     scheduleMediaSync()
                 } catch (t: Throwable) {
-                    Log.w(tag, "WorkManager scheduling failed: ${t.message}", t)
+                    Log.w(logTag, "WorkManager scheduling failed: ${t.message}", t)
                 }
             }, 1500)
         } catch (t: Throwable) {
-            Log.e(tag, "Fatal during onCreate", t)
+            Log.e(logTag, "Fatal during onCreate", t)
             showFatal(root, t)
         }
     }
