@@ -1,10 +1,15 @@
 package com.josscholman.showroom
 
 import android.annotation.SuppressLint
-import android.content.pm.ActivityInfo
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.webkit.ConsoleMessage
@@ -14,81 +19,110 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.Constraints
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webView: WebView
-    private lateinit var mediaCache: MediaCache
+    private val tag = "JsKiosk"
+    private var webView: WebView? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         hideSystemUi()
 
-        mediaCache = MediaCache(applicationContext)
-
-        webView = WebView(this).apply {
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        // A FrameLayout root so we can swap to an error view if anything below fails.
+        val root = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                cacheMode = WebSettings.LOAD_DEFAULT
-                mediaPlaybackRequiresUserGesture = false
-                allowFileAccess = true
-                allowContentAccess = true
-                useWideViewPort = true
-                loadWithOverviewMode = true
-            }
             setBackgroundColor(0xFF0056A3.toInt())
-
-            webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(
-                    view: WebView,
-                    request: WebResourceRequest
-                ): WebResourceResponse? {
-                    val url = request.url.toString()
-                    return mediaCache.tryServeFromCache(url) ?: super.shouldInterceptRequest(view, request)
-                }
-            }
-
-            webChromeClient = object : WebChromeClient() {
-                override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
-                    android.util.Log.d("JsKiosk-WebView", "${msg.sourceId()}:${msg.lineNumber()} ${msg.message()}")
-                    return true
-                }
-            }
         }
+        setContentView(root)
 
-        setContentView(webView)
+        try {
+            val mediaCache = MediaCache(applicationContext)
 
-        // Load the kiosk
-        webView.loadUrl(BuildConfig.KIOSK_URL)
+            val wv = WebView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    cacheMode = WebSettings.LOAD_DEFAULT
+                    mediaPlaybackRequiresUserGesture = false
+                    allowFileAccess = true
+                    allowContentAccess = true
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                }
+                setBackgroundColor(0xFF0056A3.toInt())
 
-        // Kick off an immediate sync, plus schedule a periodic sync
+                webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView,
+                        request: WebResourceRequest
+                    ): WebResourceResponse? {
+                        return try {
+                            mediaCache.tryServeFromCache(request.url.toString())
+                        } catch (t: Throwable) {
+                            Log.w(tag, "intercept failed: ${t.message}")
+                            null
+                        }
+                    }
+                }
+
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+                        Log.d("$tag-WebView", "${msg.sourceId()}:${msg.lineNumber()} ${msg.message()}")
+                        return true
+                    }
+                }
+            }
+
+            root.addView(wv)
+            webView = wv
+            wv.loadUrl(BuildConfig.KIOSK_URL)
+
+            // Defer the WorkManager wiring until after the UI is shown so a
+            // failure here can never block the first frame.
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    scheduleMediaSync()
+                } catch (t: Throwable) {
+                    Log.w(tag, "WorkManager scheduling failed: ${t.message}", t)
+                }
+            }, 1500)
+        } catch (t: Throwable) {
+            Log.e(tag, "Fatal during onCreate", t)
+            showFatal(root, t)
+        }
+    }
+
+    private fun scheduleMediaSync() {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        WorkManager.getInstance(this).enqueue(
+        WorkManager.getInstance(applicationContext).enqueue(
             OneTimeWorkRequestBuilder<MediaSyncWorker>()
                 .setConstraints(constraints)
                 .build()
         )
 
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             MediaSyncWorker.UNIQUE_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<MediaSyncWorker>(15, TimeUnit.MINUTES)
@@ -97,24 +131,43 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun showFatal(root: FrameLayout, t: Throwable) {
+        root.removeAllViews()
+        val tv = TextView(this).apply {
+            text = "Showroom kon niet starten.\n\n${t.javaClass.simpleName}: ${t.message}"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xFF0056A3.toInt())
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(48, 48, 48, 48)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        root.addView(tv)
+    }
+
     override fun onResume() {
         super.onResume()
         hideSystemUi()
-        webView.onResume()
+        webView?.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        webView.onPause()
+        webView?.onPause()
     }
 
     override fun onDestroy() {
-        webView.destroy()
+        webView?.destroy()
+        webView = null
         super.onDestroy()
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        // No-op: kiosk app, prevent leaving via back button
+        // Kiosk app: back is intentionally disabled.
     }
 
     @Suppress("DEPRECATION")
