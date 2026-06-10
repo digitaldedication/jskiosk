@@ -22,12 +22,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare publish directory
+        run: |
+          mkdir -p _site
+          # Copy everything except the android sources and workflow dirs
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='android' \
+            --exclude='_site' \
+            ./ _site/
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

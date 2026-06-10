@@ -1,0 +1,98 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+    inputs:
+      kiosk_url:
+        description: 'URL of the kiosk (overrides default)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Compute version
+        id: ver
+        run: |
+          # versionCode = run number; versionName = run number with leading 1.
+          echo "VERSION_CODE=${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "VERSION_NAME=1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+          # Default kiosk URL = the GitHub Pages URL of this repo
+          if [ -n "${{ github.event.inputs.kiosk_url }}" ]; then
+            echo "KIOSK_URL=${{ github.event.inputs.kiosk_url }}" >> $GITHUB_OUTPUT
+          else
+            OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            REPO=$(basename "${{ github.repository }}")
+            echo "KIOSK_URL=https://${OWNER}.github.io/${REPO}/" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Make gradlew executable
+        working-directory: android
+        run: |
+          if [ ! -f gradlew ]; then
+            # Bootstrap a wrapper because we don't ship gradlew binaries in the repo
+            curl -sSL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp/gradle
+            /tmp/gradle/gradle-8.7/bin/gradle wrapper --gradle-version=8.7 --distribution-type=bin
+          fi
+          chmod +x gradlew
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ steps.ver.outputs.VERSION_CODE }}
+          VERSION_NAME: ${{ steps.ver.outputs.VERSION_NAME }}
+          KIOSK_URL: ${{ steps.ver.outputs.KIOSK_URL }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: apk
+        working-directory: android
+        run: |
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n1)
+          echo "Found APK: $APK"
+          cp "$APK" "../js-showroom-${{ steps.ver.outputs.VERSION_NAME }}.apk"
+          echo "path=js-showroom-${{ steps.ver.outputs.VERSION_NAME }}.apk" >> $GITHUB_OUTPUT
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-showroom-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
+
+      - name: Create / update GitHub release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-v${{ steps.ver.outputs.VERSION_NAME }}
+          name: JS Showroom APK ${{ steps.ver.outputs.VERSION_NAME }}
+          body: |
+            Auto-built kiosk APK.
+
+            **Kiosk URL:** ${{ steps.ver.outputs.KIOSK_URL }}
+
+            Install on your Android device by enabling "Install unknown apps"
+            and tapping the APK below.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true

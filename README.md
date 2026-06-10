@@ -1,42 +1,74 @@
-# Jos Scholman Showroom - Web versie
+# Jos Scholman Showroom
 
-Online versie van de showroom app. Draait via GitHub Pages, geen installatie nodig.
+Touchscreen-kiosk voor de showroom. Bestaat uit drie delen:
 
-## Setup (eenmalig)
+| Onderdeel | Wat | Waar |
+| --- | --- | --- |
+| **Kiosk web app** | De fullscreen showroom (foto's, video's, swipe) | `index.html` → GitHub Pages |
+| **Admin panel** | Web-UI om foto's/video's te uploaden | `admin/index.html` → `[pages-url]/admin/` |
+| **Android APK** | Native kiosk-app met **offline cache** | `android/` → gebouwd door GitHub Actions |
 
-1. Maak een GitHub repo aan (bijv. `scholman-showroom`)
-2. Push alle bestanden naar de `main` branch
-3. Ga naar repo → **Settings → Pages → Source: GitHub Actions**
-4. Wacht tot de Actions klaar zijn (1-2 min)
-5. Je app draait op: `https://[username].github.io/scholman-showroom/`
+## Hoe het werkt
 
-## Media toevoegen
+1. Je uploadt media via de **admin panel** (in een browser, ook op je telefoon).
+2. De admin push't bestanden via de GitHub API naar de repo.
+3. De bestaande `generate-index.yml` Action genereert automatisch `index.json` per categorie.
+4. GitHub Pages serveert alles als statische site.
+5. De Android APK draait fullscreen op de TV. Op de achtergrond:
+   - syncrhroniseert hij elke 15 minuten alle media naar **lokale opslag**;
+   - speelt de kiosk altijd af vanaf die lokale cache → **werkt 100% offline**;
+   - nieuwe uploads verschijnen vanzelf zodra de TV weer internet heeft.
 
-1. Ga naar je repo op GitHub.com
-2. Open `media/infra/`, `media/groen/`, of `media/sport/`
-3. Klik **Add file → Upload files**
-4. Sleep je foto's (JPG/PNG) en video's (MP4) erin
-5. Klik **Commit changes**
-6. GitHub Action genereert automatisch de index — klaar!
+## Eerste keer setup
+
+### 1. Repo + Pages
+1. Push de repo naar GitHub.
+2. **Settings → Pages → Source: GitHub Actions**.
+3. Wacht tot de "Deploy to GitHub Pages" Action klaar is.
+4. Je kiosk draait op `https://[user].github.io/jskiosk/`.
+
+### 2. APK bouwen
+1. De Action **"Build Android APK"** loopt automatisch bij elke push naar `main` die de `android/` map raakt.
+2. Resultaat verschijnt onder **Releases** (zoek naar `apk-v1.0.X`).
+3. Eerste keer: ga zelf naar **Actions → Build Android APK → Run workflow** om hem handmatig te starten.
+
+### 3. APK installeren op je Android
+1. Download `.apk` van de laatste Release op je telefoon.
+2. Sta "Apps van onbekende bronnen" toe voor de bestandsbeheerder.
+3. Tik het bestand → installeren → klaar.
+4. Start de app: hij toont de kiosk en begint media te syncen.
+
+### 4. Admin panel gebruiken
+1. Ga naar `https://[user].github.io/jskiosk/admin/`.
+2. Maak een **GitHub Personal Access Token** (PAT):
+   - Klik op de link in het loginscherm of ga naar [github.com/settings/tokens/new](https://github.com/settings/tokens/new?scopes=repo&description=JS%20Kiosk%20Admin).
+   - Scope: alleen `repo`.
+   - Kopieer de token (`ghp_…`).
+3. Vul repo (`gebruiker/jskiosk`), branch (`main`) en token in.
+4. Sleep foto's/video's per categorie. Klaar — de Pages site, en kort daarna de APK, ziet de update.
 
 ### Bestandsnaam = Label
 - `golfbaan-cromvoirt.jpg` → **Golfbaan Cromvoirt**
 - `rotonde_centrum.mp4` → **Rotonde Centrum**
 
 ### Cover afbeelding
-Zet een `cover.jpg` in elke map voor de preview op het homescherm.
+Klik in de admin op "Als cover" bij een foto — die wordt dan de tile op het homescherm voor die categorie.
 
-## Op de TV draaien
+## Hoe de APK offline werkt
 
-Installeer **Fully Kiosk Browser** op het Android touchscreen:
-1. Open Play Store → zoek "Fully Kiosk Browser"
-2. Stel de URL in op je GitHub Pages URL
-3. Zet kiosk mode aan → fullscreen, geen adresbalk
+- Eerste start (met internet): downloadt index + alle media naar `<app-data>/kiosk-cache/media/<cat>/`.
+- Daarna: WebView vraagt om bv. `…/media/infra/Almere.jpg`, en de app onderschept dat en serveert het bestand direct van schijf.
+- Geen internet? Geen probleem — alle eerder gesyncte media speelt door.
+- Internet terug? Volgende sync (max 15 min) trekt nieuwe / gewijzigde bestanden binnen en haalt verwijderde weg.
 
-## Kiosk exit
-3x tikken op het logo-gebied bovenaan het homescherm.
+## Op de TV: kiosk-modus
+
+De APK draait al fullscreen + landscape + zonder status/nav bars en is ook een **HOME launcher** — als je hem als default home zet (eenmalig "altijd" kiezen bij de home-knop), kan de gebruiker niets anders openen.
+
+Eerder gebruikten we Fully Kiosk Browser; dat is met deze APK niet meer nodig.
 
 ## Limieten
-- GitHub repo max ~1GB totaal
-- Enkel bestand max 100MB
-- Voor grotere video's: gebruik kortere clips of lagere resolutie
+
+- GitHub repo max ~1 GB totaal.
+- Enkel bestand max **100 MB** (admin panel weigert grotere uploads).
+- Voor grotere video's: comprimeer naar 1080p/H.264.
