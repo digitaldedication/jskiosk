@@ -32,6 +32,42 @@ jobs:
             --exclude='android' \
             --exclude='_site' \
             ./ _site/
+      - name: Regenerate media indexes
+        run: |
+          # Always emit a fresh index.json per category from the files actually
+          # in the publish dir. Doing this inline avoids the separate
+          # generate-index workflow whose follow-up commit (made with
+          # GITHUB_TOKEN) does not retrigger this deploy — leaving Pages
+          # stuck with a stale index.
+          for category in infra groen sport; do
+            dir="_site/media/$category"
+            [ -d "$dir" ] || continue
+            tmp=$(mktemp)
+            echo "[" > "$tmp"
+            first=true
+            for file in "$dir"/*; do
+              [ -e "$file" ] || continue
+              filename=$(basename "$file")
+              case "$filename" in
+                index.json|cover.jpg|.*) continue ;;
+              esac
+              ext_lower=$(echo "${filename##*.}" | tr '[:upper:]' '[:lower:]')
+              case "$ext_lower" in
+                mp4|mov|webm) type=video ;;
+                jpg|jpeg|png|webp) type=image ;;
+                *) continue ;;
+              esac
+              name_no_ext="${filename%.*}"
+              label=$(echo "$name_no_ext" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')
+              if $first; then first=false; else echo "," >> "$tmp"; fi
+              printf '  {"file": "%s", "label": "%s", "type": "%s"}' "$filename" "$label" "$type" >> "$tmp"
+            done
+            echo "" >> "$tmp"
+            echo "]" >> "$tmp"
+            mv "$tmp" "$dir/index.json"
+            echo "Generated $dir/index.json:"
+            cat "$dir/index.json"
+          done
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
