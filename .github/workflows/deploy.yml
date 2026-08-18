@@ -137,6 +137,9 @@ jobs:
                       label = re.sub(r'[-_]', ' ', base)
                       entry['label'] = re.sub(r'\b\w', lambda m: m.group().upper(), label)
                   entry['type'] = typ
+                  # Size (post-optimization) lets the service worker detect
+                  # changed files and replace its cached copy.
+                  entry['size'] = os.path.getsize(os.path.join(d, fn))
                   items.append(entry)
               with open(os.path.join(d, 'index.json'), 'w', encoding='utf-8') as f:
                   json.dump(items, f, ensure_ascii=False, indent=2)

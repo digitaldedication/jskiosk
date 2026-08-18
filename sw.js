@@ -80,12 +80,25 @@ async function syncAll() {
       } catch { /* offline */ }
       if (!items) continue;
 
-      const files = items.map((i) => i.file).filter(Boolean);
-      files.push('cover.jpg');
+      const files = items.filter((i) => i.file).map((i) => ({ name: i.file, size: i.size }));
+      files.push({ name: 'cover.jpg', size: null });
       for (const f of files) {
-        const url = scopeUrl(`media/${cat}/${encodeURIComponent(f)}`);
+        const url = scopeUrl(`media/${cat}/${encodeURIComponent(f.name)}`);
         keep.add(url);
-        if (!(await cache.match(url))) toDownload.push(url);
+        const cached = await cache.match(url);
+        if (!cached) { toDownload.push(url); continue; }
+        // Bestand veranderd op de server (bv. geoptimaliseerde versie)?
+        // Vergelijk groottes en vervang de cache-kopie bij verschil. De
+        // index levert de grootte; voor cover.jpg doen we een HEAD-request.
+        let expected = f.size;
+        if (expected == null) {
+          try {
+            const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+            expected = head.ok ? Number(head.headers.get('content-length')) : null;
+          } catch { expected = null; }
+        }
+        const have = Number(cached.headers.get('content-length'));
+        if (expected && have && expected !== have) toDownload.push(url);
       }
     }
 
