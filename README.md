@@ -51,6 +51,13 @@ Touchscreen-kiosk voor de showroom. Bestaat uit drie delen:
 - `golfbaan-cromvoirt.jpg` → **Golfbaan Cromvoirt**
 - `rotonde_centrum.mp4` → **Rotonde Centrum**
 
+### Naam aanpassen
+Klik in de admin op **"Naam"** bij een foto of video om de getoonde naam te
+wijzigen — dan telt de bestandsnaam niet meer. De namen staan in
+`media/<categorie>/labels.json`; een aangepaste naam wordt letterlijk getoond
+(ook bij video's, die standaard geen naam tonen). Veld leegmaken = terug naar
+de bestandsnaam.
+
 ### Cover afbeelding
 Klik in de admin op "Als cover" bij een foto — die wordt dan de tile op het homescherm voor die categorie.
 

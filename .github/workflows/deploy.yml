@@ -51,41 +51,56 @@ jobs:
           # generate-index workflow whose follow-up commit (made with
           # GITHUB_TOKEN) does not retrigger this deploy — leaving Pages
           # stuck with a stale index.
-          for category in infra groen sport; do
-            dir="_site/media/$category"
-            [ -d "$dir" ] || continue
-            tmp=$(mktemp)
-            echo "[" > "$tmp"
-            first=true
-            for file in "$dir"/*; do
-              [ -e "$file" ] || continue
-              filename=$(basename "$file")
-              case "$filename" in
-                index.json|cover.jpg|.*) continue ;;
-              esac
-              ext_lower=$(echo "${filename##*.}" | tr '[:upper:]' '[:lower:]')
-              name_no_ext="${filename%.*}"
-              case "$ext_lower" in
-                mov)
+          #
+          # A media/<cat>/labels.json ({"file.jpg": "Custom name"}, written by
+          # the admin panel) overrides the filename-derived label; such
+          # entries are marked "custom": true so the kiosk shows them as-is.
+          python3 - <<'EOF'
+          import json, os, re
+
+          for category in ['infra', 'groen', 'sport']:
+              d = f'_site/media/{category}'
+              if not os.path.isdir(d):
+                  continue
+              labels = {}
+              labels_path = os.path.join(d, 'labels.json')
+              if os.path.exists(labels_path):
+                  try:
+                      with open(labels_path, encoding='utf-8') as f:
+                          labels = json.load(f)
+                  except Exception as e:
+                      print(f'warning: unreadable labels.json in {category}: {e}')
+              items = []
+              for fn in sorted(os.listdir(d), key=str.lower):
+                  if fn in ('index.json', 'cover.jpg', 'labels.json') or fn.startswith('.'):
+                      continue
+                  base, _, ext = fn.rpartition('.')
+                  ext = ext.lower()
                   # Skip a .mov when the same video also exists as .mp4:
                   # browsers/WebView play the mp4, and it avoids listing the
                   # same video twice.
-                  if [ -e "$dir/${name_no_ext}.mp4" ]; then continue; fi
-                  type=video ;;
-                mp4|webm) type=video ;;
-                jpg|jpeg|png|webp) type=image ;;
-                *) continue ;;
-              esac
-              label=$(echo "$name_no_ext" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')
-              if $first; then first=false; else echo "," >> "$tmp"; fi
-              printf '  {"file": "%s", "label": "%s", "type": "%s"}' "$filename" "$label" "$type" >> "$tmp"
-            done
-            echo "" >> "$tmp"
-            echo "]" >> "$tmp"
-            mv "$tmp" "$dir/index.json"
-            echo "Generated $dir/index.json:"
-            cat "$dir/index.json"
-          done
+                  if ext == 'mov' and os.path.exists(os.path.join(d, base + '.mp4')):
+                      continue
+                  if ext in ('mp4', 'webm', 'mov'):
+                      typ = 'video'
+                  elif ext in ('jpg', 'jpeg', 'png', 'webp'):
+                      typ = 'image'
+                  else:
+                      continue
+                  entry = {'file': fn}
+                  custom = str(labels.get(fn) or '').strip()
+                  if custom:
+                      entry['label'] = custom
+                      entry['custom'] = True
+                  else:
+                      label = re.sub(r'[-_]', ' ', base)
+                      entry['label'] = re.sub(r'\b\w', lambda m: m.group().upper(), label)
+                  entry['type'] = typ
+                  items.append(entry)
+              with open(os.path.join(d, 'index.json'), 'w', encoding='utf-8') as f:
+                  json.dump(items, f, ensure_ascii=False, indent=2)
+              print(f'Generated {d}/index.json ({len(items)} items)')
+          EOF
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact

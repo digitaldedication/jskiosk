@@ -285,6 +285,9 @@
     let config = { repo: '', branch: 'main', token: '' };
     let currentCategory = 'infra';
     let mediaByCategory = { infra: [], groen: [], sport: [] };
+    // Aangepaste weergavenamen per categorie: { "bestandsnaam.jpg": "Mooie naam" }.
+    // Opgeslagen als media/<cat>/labels.json; de deploy neemt ze over in index.json.
+    let labelsByCategory = { infra: {}, groen: {}, sport: {} };
 
     // ===== LOGIN =====
     function loadConfig() {
@@ -361,11 +364,25 @@
     async function listMedia(category) {
       try {
         const items = await gh(`/contents/media/${category}?ref=${config.branch}`);
-        return items.filter(i => i.type === 'file' && !i.name.startsWith('.') && i.name !== 'index.json');
+        return items.filter(i => i.type === 'file' && !i.name.startsWith('.')
+          && i.name !== 'index.json' && i.name !== 'labels.json');
       } catch (e) {
         if (e.message.includes('404')) return [];
         throw e;
       }
+    }
+
+    async function loadLabels(category) {
+      try {
+        const f = await gh(`/contents/media/${category}/labels.json?ref=${config.branch}`);
+        return JSON.parse(decodeURIComponent(escape(atob(f.content.replace(/\n/g, ''))))) || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function derivedLabel(filename) {
+      return filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
     }
 
     // ===== UPLOAD/DELETE via Git Database API =====
@@ -444,6 +461,24 @@
       );
     }
 
+    async function saveLabels(category) {
+      const json = JSON.stringify(labelsByCategory[category], null, 2);
+      const b64 = btoa(unescape(encodeURIComponent(json)));
+      const blob = await gh('/git/blobs', {
+        method: 'POST',
+        body: { content: b64, encoding: 'base64' },
+      });
+      await commitTreeChanges(
+        [{
+          path: `media/${category}/labels.json`,
+          mode: '100644',
+          type: 'blob',
+          sha: blob.sha,
+        }],
+        `Namen bijgewerkt voor ${category} via admin`,
+      );
+    }
+
     async function setCover(category, filename) {
       // Reuse the source file's existing blob — no re-upload needed.
       const src = await gh(`/contents/media/${category}/${encodeURIComponent(filename)}?ref=${config.branch}`);
@@ -464,6 +499,7 @@
       for (const cat of cats) {
         try {
           mediaByCategory[cat] = await listMedia(cat);
+          labelsByCategory[cat] = await loadLabels(cat);
           document.getElementById(`count-${cat}`).textContent = mediaByCategory[cat].filter(i => i.name !== 'cover.jpg').length;
         } catch (e) {
           toast(`Fout bij laden ${cat}: ${e.message}`, 'error');
@@ -487,7 +523,8 @@
       container.innerHTML = `<div class="grid">${mediaItems.map(item => {
         const ext = item.name.split('.').pop().toLowerCase();
         const isVideo = ['mp4', 'mov', 'webm'].includes(ext);
-        const label = item.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        const customLabel = labelsByCategory[currentCategory][item.name];
+        const label = customLabel || derivedLabel(item.name);
         const safeName = item.name.replace(/'/g, "\\'");
         return `
           <div class="media-card">
@@ -498,10 +535,11 @@
               ${coverSha === item.sha ? '' : ''}
             </div>
             <div class="info">
-              <div class="label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+              <div class="label" title="${escapeHtml(label)}">${escapeHtml(label)}${customLabel ? ' ✎' : ''}</div>
               <div class="filename" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
             </div>
             <div class="actions">
+              <button class="btn-link" onclick="handleRename('${safeName}')">Naam</button>
               ${!isVideo ? `<button class="btn-link" onclick="handleSetCover('${safeName}')">Als cover</button>` : ''}
               <button class="btn-link" style="color:var(--danger);" onclick="handleDelete('${safeName}')">Verwijder</button>
             </div>
@@ -521,6 +559,33 @@
         await deleteFile(currentCategory, filename);
         toast('Verwijderd', 'success');
         await loadAllCategories();
+      } catch (e) {
+        toast('Fout: ' + e.message, 'error');
+      } finally {
+        hideSync();
+      }
+    }
+
+    async function handleRename(filename) {
+      const existing = labelsByCategory[currentCategory][filename] || '';
+      const input = prompt(
+        'Naam zoals getoond in de app (leeg laten = terug naar bestandsnaam):',
+        existing || derivedLabel(filename)
+      );
+      if (input === null) return;
+      const name = input.trim();
+      if (name === existing) return;
+      if (!existing && (name === '' || name === derivedLabel(filename))) return;
+      if (name === '') {
+        delete labelsByCategory[currentCategory][filename];
+      } else {
+        labelsByCategory[currentCategory][filename] = name;
+      }
+      try {
+        showSync('Naam opslaan...');
+        await saveLabels(currentCategory);
+        toast('Naam opgeslagen — staat na de volgende publicatie (±2 min) in de app', 'success');
+        renderMedia();
       } catch (e) {
         toast('Fout: ' + e.message, 'error');
       } finally {
