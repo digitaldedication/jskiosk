@@ -306,6 +306,10 @@
     }
 
     // ===== RENDER =====
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
     function cleanLabel(label) {
       return label
         .replace(/[()]/g, '')
@@ -321,16 +325,22 @@
       // maakt het openen van een categorie traag.
       wrapper.innerHTML = mediaItems.map((item, i) => {
         const src = `${BASE}/media/${currentCategory}/${item.file}`;
-        let mediaEl, labelEl = '';
-        if (item.type === 'video') {
+        const isVideo = item.type === 'video';
+        // Een in het beheer aangepaste naam (custom) tonen we letterlijk —
+        // ook bij video's. Namen afgeleid van de bestandsnaam worden zoals
+        // vanouds opgeschoond en alleen bij foto's getoond.
+        const clean = item.custom
+          ? String(item.label || '').trim()
+          : (isVideo ? '' : cleanLabel(item.label));
+        let mediaEl;
+        if (isVideo) {
           mediaEl = `<video class="media" data-index="${i}" playsinline preload="auto" data-src="${src}"></video>`;
         } else {
-          mediaEl = `<img class="media" data-src="${src}" alt="${item.label}" draggable="false" decoding="async">`;
-          const clean = cleanLabel(item.label);
-          if (clean) {
-            labelEl = `<div class="slide-label"><span>${clean}</span></div>`;
-          }
+          mediaEl = `<img class="media" data-src="${src}" alt="${escapeHtml(item.label)}" draggable="false" decoding="async">`;
         }
+        const labelEl = clean
+          ? `<div class="slide-label"><span>${escapeHtml(clean)}</span></div>`
+          : '';
         return `<div class="slide">${mediaEl}${labelEl}</div>`;
       }).join('');
     }
