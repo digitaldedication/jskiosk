@@ -38,10 +38,51 @@ jobs:
           # 3840px. Resize-down + recompress in the publish dir only (the
           # repo keeps the originals), which cuts transfer and decode time
           # by ~90% for both the web kiosk and the APK sync.
-          find _site/media -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 |
-          while IFS= read -r -d '' f; do
-            mogrify -auto-orient -resize '3840x3840>' -strip -quality 82 "$f" || echo "skip: $f"
-          done
+          #
+          # ImageMagick is not preinstalled on the runner, so use Pillow.
+          # This step must fail loudly rather than silently publish 20 MB
+          # originals again.
+          python3 -m pip install --quiet pillow
+          python3 - <<'EOF'
+          import os, sys
+          from PIL import Image, ImageOps
+
+          MAX_DIM = 3840
+          RECOMPRESS_OVER = 2_500_000  # bytes; leave already-small files untouched
+          exts = {'.jpg': 'JPEG', '.jpeg': 'JPEG', '.png': 'PNG', '.webp': 'WEBP'}
+          failed = []
+
+          for root, _, files in os.walk('_site/media'):
+              for fn in files:
+                  fmt = exts.get(os.path.splitext(fn)[1].lower())
+                  if not fmt:
+                      continue
+                  path = os.path.join(root, fn)
+                  size = os.path.getsize(path)
+                  try:
+                      with Image.open(path) as im:
+                          im = ImageOps.exif_transpose(im)
+                          needs_resize = max(im.size) > MAX_DIM
+                          if not needs_resize and size <= RECOMPRESS_OVER:
+                              continue
+                          if needs_resize:
+                              im.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)
+                          if fmt == 'JPEG' and im.mode not in ('RGB', 'L'):
+                              im = im.convert('RGB')
+                          kwargs = {'optimize': True}
+                          if fmt in ('JPEG', 'WEBP'):
+                              kwargs['quality'] = 82
+                          if fmt == 'JPEG':
+                              kwargs['progressive'] = True
+                          im.save(path, fmt, **kwargs)
+                      print(f'{path}: {size//1024} KB -> {os.path.getsize(path)//1024} KB')
+                  except Exception as e:
+                      failed.append(path)
+                      print(f'FAILED {path}: {e}')
+
+          if failed:
+              sys.exit(f'{len(failed)} image(s) failed to optimize')
+          EOF
           du -sh _site/media/*
 
       - name: Regenerate media indexes
