@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
                         request: WebResourceRequest
                     ): WebResourceResponse? {
                         return try {
-                            mediaCache.tryServeFromCache(request.url.toString())
+                            mediaCache.tryServeFromCache(request.url.toString(), request.requestHeaders)
                         } catch (t: Throwable) {
                             Log.w(logTag, "intercept failed: ${t.message}")
                             null

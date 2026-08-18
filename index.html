@@ -164,6 +164,21 @@
       position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
     }
+
+    /* ===== SYNC BADGE ===== */
+    #syncStatus {
+      position: absolute;
+      bottom: 16px; left: 16px;
+      background: rgba(0,0,0,0.55);
+      color: var(--white);
+      font-size: 15px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      z-index: 20;
+      display: none;
+      pointer-events: none;
+    }
+    #syncStatus.visible { display: block; }
   </style>
 </head>
 <body>
@@ -185,6 +200,7 @@
         <h2>Sport</h2>
       </div>
     </div>
+    <div id="syncStatus"></div>
   </div>
 
   <!-- VIEWER -->
@@ -232,11 +248,11 @@
         if (!img) continue;
 
         // Try cover.jpg first
-        img.src = `${BASE}/media/${cat}/cover.jpg?t=${Date.now()}`;
+        img.src = `${BASE}/media/${cat}/cover.jpg`;
         img.onerror = async function() {
           // No cover.jpg — use first image from index.json
           try {
-            const res = await fetch(`${BASE}/media/${cat}/index.json?t=${Date.now()}`);
+            const res = await fetch(`${BASE}/media/${cat}/index.json`);
             if (!res.ok) throw new Error();
             const items = await res.json();
             const firstImage = items.find(i => i.type === 'image');
@@ -264,7 +280,7 @@
       userSwiped = false;
 
       try {
-        const res = await fetch(`${BASE}/media/${catId}/index.json?t=${Date.now()}`);
+        const res = await fetch(`${BASE}/media/${catId}/index.json`);
         if (!res.ok) throw new Error();
         mediaItems = await res.json();
       } catch {
@@ -300,13 +316,16 @@
 
     function renderSlides() {
       const wrapper = document.getElementById('slideWrapper');
+      // Media pas laden wanneer een slide (bijna) in beeld komt: alles in
+      // één keer laden betekent tientallen bestanden tegelijk decoderen en
+      // maakt het openen van een categorie traag.
       wrapper.innerHTML = mediaItems.map((item, i) => {
         const src = `${BASE}/media/${currentCategory}/${item.file}`;
         let mediaEl, labelEl = '';
         if (item.type === 'video') {
-          mediaEl = `<video class="media" data-index="${i}" playsinline preload="metadata" src="${src}"></video>`;
+          mediaEl = `<video class="media" data-index="${i}" playsinline preload="auto" data-src="${src}"></video>`;
         } else {
-          mediaEl = `<img class="media" src="${src}" alt="${item.label}" draggable="false">`;
+          mediaEl = `<img class="media" data-src="${src}" alt="${item.label}" draggable="false" decoding="async">`;
           const clean = cleanLabel(item.label);
           if (clean) {
             labelEl = `<div class="slide-label"><span>${clean}</span></div>`;
@@ -316,8 +335,27 @@
       }).join('');
     }
 
+    function hydrateSlide(index) {
+      const wrapper = document.getElementById('slideWrapper');
+      const n = wrapper.children.length;
+      if (n === 0) return;
+      const slide = wrapper.children[((index % n) + n) % n];
+      const media = slide && slide.querySelector('.media');
+      if (media && !media.src && media.dataset.src) {
+        media.src = media.dataset.src;
+      }
+    }
+
+    // Huidige slide + beide buren alvast laden, zodat swipen direct beeld geeft.
+    function hydrateAround(index) {
+      hydrateSlide(index);
+      hydrateSlide(index + 1);
+      hydrateSlide(index - 1);
+    }
+
     function updateSlide() {
       const wrapper = document.getElementById('slideWrapper');
+      hydrateAround(currentIndex);
       wrapper.style.transform = `translateX(-${currentIndex * 100}%)`;
 
       // Pause all videos
@@ -376,6 +414,8 @@
       wrapper.querySelectorAll('video').forEach(v => v.pause());
       currentCategory = null;
       mediaItems = [];
+      // Slides opruimen zodat geladen foto's/video's geheugen vrijgeven.
+      wrapper.innerHTML = '';
       showScreen('home');
     });
 
@@ -445,6 +485,32 @@
         document.documentElement.requestFullscreen().catch(() => {});
       }
     }, { once: true });
+
+    // ===== OFFLINE CACHE (browser) =====
+    // In de browser slaat een service worker alle media vooraf lokaal op,
+    // zodat foto's en video's direct van schijf spelen. Bij elke start wordt
+    // de nieuwste inhoud opgehaald. De Android-APK heeft zijn eigen native
+    // cache en slaat dit over (WebView meldt zich met "; wv)" in de UA).
+    (function setupOfflineCache() {
+      const isWebView = /; wv\)/.test(navigator.userAgent);
+      if (isWebView || !('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
+
+      const badge = document.getElementById('syncStatus');
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        const msg = e.data || {};
+        if (msg.type === 'sync-progress' && msg.total > 0) {
+          badge.textContent = `Nieuwe media downloaden… ${msg.done}/${msg.total}`;
+          badge.classList.add('visible');
+        } else if (msg.type === 'sync-done') {
+          badge.classList.remove('visible');
+        }
+      });
+
+      navigator.serviceWorker.register('sw.js')
+        .then(() => navigator.serviceWorker.ready)
+        .then((reg) => { if (reg.active) reg.active.postMessage({ type: 'sync' }); })
+        .catch(() => {});
+    })();
 
     // ===== START =====
     init();

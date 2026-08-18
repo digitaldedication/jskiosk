@@ -32,6 +32,18 @@ jobs:
             --exclude='android' \
             --exclude='_site' \
             ./ _site/
+      - name: Optimize images for 4K playback
+        run: |
+          # Camera originals are 10-22 MB each; a 4K screen needs at most
+          # 3840px. Resize-down + recompress in the publish dir only (the
+          # repo keeps the originals), which cuts transfer and decode time
+          # by ~90% for both the web kiosk and the APK sync.
+          find _site/media -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 |
+          while IFS= read -r -d '' f; do
+            mogrify -auto-orient -resize '3840x3840>' -strip -quality 82 "$f" || echo "skip: $f"
+          done
+          du -sh _site/media/*
+
       - name: Regenerate media indexes
         run: |
           # Always emit a fresh index.json per category from the files actually
@@ -52,12 +64,18 @@ jobs:
                 index.json|cover.jpg|.*) continue ;;
               esac
               ext_lower=$(echo "${filename##*.}" | tr '[:upper:]' '[:lower:]')
+              name_no_ext="${filename%.*}"
               case "$ext_lower" in
-                mp4|mov|webm) type=video ;;
+                mov)
+                  # Skip a .mov when the same video also exists as .mp4:
+                  # browsers/WebView play the mp4, and it avoids listing the
+                  # same video twice.
+                  if [ -e "$dir/${name_no_ext}.mp4" ]; then continue; fi
+                  type=video ;;
+                mp4|webm) type=video ;;
                 jpg|jpeg|png|webp) type=image ;;
                 *) continue ;;
               esac
-              name_no_ext="${filename%.*}"
               label=$(echo "$name_no_ext" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')
               if $first; then first=false; else echo "," >> "$tmp"; fi
               printf '  {"file": "%s", "label": "%s", "type": "%s"}' "$filename" "$label" "$type" >> "$tmp"

@@ -54,22 +54,52 @@ class MediaCache(private val context: Context) {
 
     fun indexFile(category: String): File = File(rootDir, "media/$category/index.json")
 
-    fun tryServeFromCache(remoteUrl: String): WebResourceResponse? {
+    fun tryServeFromCache(
+        remoteUrl: String,
+        requestHeaders: Map<String, String>? = null
+    ): WebResourceResponse? {
         val file = localFileFor(remoteUrl) ?: return null
         if (!file.exists() || file.length() == 0L) return null
         val mime = mimeFor(file.name)
+        val encoding =
+            if (mime.startsWith("text/") || mime.endsWith("json") || mime.endsWith("javascript")) "UTF-8" else null
+
+        // De videospeler vraagt om byte-ranges (starten, doorspoelen). Zonder
+        // 206-antwoord valt hij terug op de volledige stream en start een
+        // video merkbaar trager.
+        val range = requestHeaders?.entries
+            ?.firstOrNull { it.key.equals("Range", ignoreCase = true) }?.value
+        if (range != null) {
+            val m = Regex("bytes=(\\d+)-(\\d*)").find(range)
+            if (m != null) {
+                val total = file.length()
+                val start = m.groupValues[1].toLong()
+                val end = m.groupValues[2].toLongOrNull()?.coerceAtMost(total - 1) ?: (total - 1)
+                if (start in 0 until total && start <= end) {
+                    val stream = FileInputStream(file)
+                    var skipped = 0L
+                    while (skipped < start) {
+                        val s = stream.skip(start - skipped)
+                        if (s <= 0) break
+                        skipped += s
+                    }
+                    val headers = mapOf(
+                        "Access-Control-Allow-Origin" to "*",
+                        "Accept-Ranges" to "bytes",
+                        "Content-Range" to "bytes $start-$end/$total",
+                        "Content-Length" to (end - start + 1).toString(),
+                    )
+                    return WebResourceResponse(mime, encoding, 206, "Partial Content", headers, stream)
+                }
+            }
+        }
+
         val headers = mapOf(
             "Access-Control-Allow-Origin" to "*",
+            "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-cache",
         )
-        return WebResourceResponse(
-            mime,
-            if (mime.startsWith("text/") || mime.endsWith("json") || mime.endsWith("javascript")) "UTF-8" else null,
-            200,
-            "OK",
-            headers,
-            FileInputStream(file)
-        )
+        return WebResourceResponse(mime, encoding, 200, "OK", headers, FileInputStream(file))
     }
 
     private fun mimeFor(filename: String): String {

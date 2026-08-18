@@ -67,6 +67,21 @@ De APK draait al fullscreen + landscape + zonder status/nav bars en is ook een *
 
 Eerder gebruikten we Fully Kiosk Browser; dat is met deze APK niet meer nodig.
 
+## Snelheid
+
+- **Foto's worden bij publicatie automatisch verkleind** naar max. 3840px
+  (4K) en opnieuw gecomprimeerd. Je kunt dus gewoon originele camerafoto's
+  (10-22 MB) uploaden; de kiosk en de APK krijgen een versie van ~1-2 MB.
+- **In de browser** haalt een service worker (`sw.js`) bij elke start alle
+  media vooraf binnen; daarna speelt alles direct van schijf, ook offline.
+  Tijdens het binnenhalen zie je linksonder "Nieuwe media downloaden… x/y".
+- **In de APK** doet de native cache hetzelfde (met byte-range-ondersteuning
+  zodat video's direct starten).
+- Het kiosk-scherm laadt per categorie alleen de huidige slide plus de twee
+  buren, in plaats van alle media tegelijk.
+- Een `.mov` met een gelijknamige `.mp4` wordt overgeslagen in de index
+  (anders staat dezelfde video er twee keer in).
+
 ## Limieten
 
 - GitHub repo max ~1 GB totaal.
