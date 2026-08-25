@@ -85,6 +85,17 @@ jobs:
           EOF
           du -sh _site/media/*
 
+      # Hercoderen is duur (tot ~10 min per 4K-video); bewaar het resultaat
+      # per bron-checksum zodat elke video maar één keer wordt omgezet en
+      # elke volgende deploy in seconden klaar is.
+      - name: Cache transcoded videos
+        uses: actions/cache@v4
+        with:
+          path: .video-cache
+          key: video-cache-v1-${{ hashFiles('media/**/*.mp4', 'media/**/*.mov') }}
+          restore-keys: |
+            video-cache-v1-
+
       - name: Optimize videos for TV playback
         run: |
           # 60-90 MB (4K) camera-video's maken de eerste sync traag en laten
@@ -104,6 +115,11 @@ jobs:
             [ -e "${f%.*}.mp4" ] && rm -v "$f"
           done
 
+          mkdir -p .video-cache
+
+          # Let op: -nostdin is verplicht — zonder die vlag leest ffmpeg de
+          # rest van de bestandenlijst uit de pipe en verwerkt de lus maar
+          # één video.
           find _site/media -type f \( -iname '*.mp4' -o -iname '*.mov' \) -print0 |
           while IFS= read -r -d '' f; do
             w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$f" | head -n1)
@@ -113,13 +129,32 @@ jobs:
               echo "keep: $f (${w}px, $((size/1024/1024)) MB)"
               continue
             fi
+
+            hash=$(sha256sum "$f" | cut -c1-32)
+            cached=".video-cache/$hash.mp4"
+            if [ -f "$cached" ]; then
+              cp "$cached" "$f"
+              echo "cache: $f -> $(($(stat -c%s "$f")/1024/1024)) MB"
+              continue
+            fi
+
+            # Bronnen boven 30 fps terugbrengen naar 30: halveert het werk
+            # voor 60fps-materiaal en de TV toont toch geen verschil.
+            rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of csv=p=0 "$f" | head -n1)
+            num=${rate%%/*}; den=${rate##*/}
+            case "$num$den" in *[!0-9]*) num=0; den=1 ;; esac
+            [ "${den:-0}" -gt 0 ] || den=1
+            fpsfilter=""
+            if [ $((num / den)) -gt 30 ]; then fpsfilter=",fps=30"; fi
+
             tmp="$f.tmp.mp4"
-            if ffmpeg -y -v error -i "$f" \
-                 -vf "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2" \
-                 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p \
+            if ffmpeg -nostdin -y -v error -i "$f" \
+                 -vf "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2$fpsfilter" \
+                 -c:v libx264 -preset ultrafast -crf 24 -pix_fmt yuv420p \
                  -c:a aac -b:a 128k -movflags +faststart "$tmp"; then
               newsize=$(stat -c%s "$tmp")
               mv "$tmp" "$f"
+              cp "$f" "$cached"
               echo "$f: $((size/1024/1024)) MB -> $((newsize/1024/1024)) MB"
             else
               rm -f "$tmp"
