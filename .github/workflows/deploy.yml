@@ -92,9 +92,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .video-cache
-          key: video-cache-v1-${{ hashFiles('media/**/*.mp4', 'media/**/*.mov') }}
+          key: video-cache-v2-${{ hashFiles('media/**/*.mp4', 'media/**/*.mov') }}
           restore-keys: |
-            video-cache-v1-
+            video-cache-v2-
 
       - name: Optimize videos for TV playback
         run: |
@@ -148,14 +148,25 @@ jobs:
             if [ $((num / den)) -gt 30 ]; then fpsfilter=",fps=30"; fi
 
             tmp="$f.tmp.mp4"
+            # maxrate begrenst de bitrate: zonder plafond kan een zeer
+            # efficiënt gecomprimeerde 4K-bron na hercoderen juist GROTER
+            # worden (82 MB -> 373 MB in de praktijk).
             if ffmpeg -nostdin -y -v error -i "$f" \
                  -vf "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2$fpsfilter" \
-                 -c:v libx264 -preset ultrafast -crf 24 -pix_fmt yuv420p \
+                 -c:v libx264 -preset superfast -crf 23 -maxrate 6M -bufsize 12M -pix_fmt yuv420p \
                  -c:a aac -b:a 128k -movflags +faststart "$tmp"; then
               newsize=$(stat -c%s "$tmp")
-              mv "$tmp" "$f"
-              cp "$f" "$cached"
-              echo "$f: $((size/1024/1024)) MB -> $((newsize/1024/1024)) MB"
+              if [ "$newsize" -lt "$size" ]; then
+                mv "$tmp" "$f"
+                cp "$f" "$cached"
+                echo "$f: $((size/1024/1024)) MB -> $((newsize/1024/1024)) MB"
+              else
+                rm -f "$tmp"
+                # Origineel is al compacter; onthoud dat via de cache zodat
+                # we dit bestand niet elke deploy opnieuw proberen.
+                cp "$f" "$cached"
+                echo "keep-original: $f (transcode werd $((newsize/1024/1024)) MB)"
+              fi
             else
               rm -f "$tmp"
               echo "WARN: transcode failed, keeping original: $f"
