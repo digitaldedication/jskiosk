@@ -110,6 +110,10 @@ class MainActivity : AppCompatActivity() {
                         return true
                     }
                 }
+
+                // JS-brug: de kioskpagina toont hiermee "Media downloaden… x/y"
+                // tot de hele cache gevuld is.
+                addJavascriptInterface(KioskBridge(mediaCache), "KioskApp")
             }
 
             root.addView(wv)

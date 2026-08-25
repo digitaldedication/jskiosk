@@ -85,6 +85,43 @@ jobs:
           EOF
           du -sh _site/media/*
 
+      - name: Optimize videos for TV playback
+        run: |
+          # 60-90 MB (4K) camera-video's maken de eerste sync traag en laten
+          # de videodecoder van signage-borden (RK3566) haperen. Hercodeer
+          # naar max 1080p H.264 met faststart; kleine video's blijven staan.
+          command -v ffmpeg >/dev/null || { echo "ffmpeg missing on runner"; exit 1; }
+
+          # Een .mov met gelijknamige .mp4 staat niet in de index en wordt
+          # nooit afgespeeld: niet publiceren.
+          find _site/media -type f -iname '*.mov' | while IFS= read -r f; do
+            [ -e "${f%.*}.mp4" ] && rm -v "$f"
+          done
+
+          find _site/media -type f \( -iname '*.mp4' -o -iname '*.mov' \) -print0 |
+          while IFS= read -r -d '' f; do
+            w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$f" | head -n1)
+            case "$w" in ''|*[!0-9]*) w=0 ;; esac
+            size=$(stat -c%s "$f")
+            if [ "$w" -le 1920 ] && [ "$size" -le 26214400 ]; then
+              echo "keep: $f (${w}px, $((size/1024/1024)) MB)"
+              continue
+            fi
+            tmp="$f.tmp.mp4"
+            if ffmpeg -y -v error -i "$f" \
+                 -vf "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2" \
+                 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p \
+                 -c:a aac -b:a 128k -movflags +faststart "$tmp"; then
+              newsize=$(stat -c%s "$tmp")
+              mv "$tmp" "$f"
+              echo "$f: $((size/1024/1024)) MB -> $((newsize/1024/1024)) MB"
+            else
+              rm -f "$tmp"
+              echo "WARN: transcode failed, keeping original: $f"
+            fi
+          done
+          du -sh _site/media/*
+
       - name: Regenerate media indexes
         run: |
           # Always emit a fresh index.json per category from the files actually

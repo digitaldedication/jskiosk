@@ -118,6 +118,37 @@ class MediaCache(private val context: Context) {
         file.parentFile?.mkdirs()
     }
 
+    /**
+     * Hoeveel van de media uit de gesyncte indexen staat al (volledig) op
+     * schijf? Gebruikt door de JS-brug zodat de kioskpagina een
+     * downloadvoortgang kan tonen. total=0 zolang er nog geen index is.
+     */
+    fun statusJson(): String {
+        var total = 0
+        var cached = 0
+        for (cat in listOf("infra", "groen", "sport")) {
+            val idx = indexFile(cat)
+            if (!idx.exists()) continue
+            val arr = try {
+                org.json.JSONArray(idx.readText())
+            } catch (_: Throwable) {
+                continue
+            }
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val name = obj.optString("file")
+                if (name.isNullOrEmpty()) continue
+                total++
+                val f = File(idx.parentFile, name)
+                val want = obj.optLong("size", -1L)
+                if (f.exists() && f.length() > 0 && (want <= 0L || f.length() == want)) {
+                    cached++
+                }
+            }
+        }
+        return "{\"cached\":$cached,\"total\":$total}"
+    }
+
     /** Drop files in media/<cat>/ that are no longer referenced. Shell files are kept. */
     fun pruneOrphanMedia(keepRelativePaths: Set<String>) {
         val mediaDir = File(rootDir, "media")
