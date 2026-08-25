@@ -90,7 +90,13 @@ jobs:
           # 60-90 MB (4K) camera-video's maken de eerste sync traag en laten
           # de videodecoder van signage-borden (RK3566) haperen. Hercodeer
           # naar max 1080p H.264 met faststart; kleine video's blijven staan.
-          command -v ffmpeg >/dev/null || { echo "ffmpeg missing on runner"; exit 1; }
+          # Niet voorgeïnstalleerd op de runner (net als ImageMagick destijds):
+          # zelf installeren. Mislukt dat, dan faalt de stap luid.
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg >/dev/null
+          fi
+          command -v ffmpeg >/dev/null || { echo "ffmpeg install failed"; exit 1; }
 
           # Een .mov met gelijknamige .mp4 staat niet in de index en wordt
           # nooit afgespeeld: niet publiceren.
