@@ -22,6 +22,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -35,10 +36,8 @@ class MainActivity : AppCompatActivity() {
     private val logTag = "JsKiosk"
     private var webView: WebView? = null
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemUi()
 
         // A FrameLayout root so we can swap to an error view if anything below fails.
         val root = FrameLayout(this).apply {
@@ -50,6 +49,27 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
+        try {
+            hideSystemUi()
+
+            // Is de app de vorige keer gecrasht? Toon dan eerst de stacktrace
+            // op het scherm, zodat die gefotografeerd kan worden.
+            val crashFile = java.io.File(filesDir, KioskApplication.CRASH_FILE)
+            if (crashFile.exists()) {
+                val trace = crashFile.readText()
+                crashFile.delete()
+                showCrashReport(root, trace)
+            } else {
+                startKiosk(root)
+            }
+        } catch (t: Throwable) {
+            Log.e(logTag, "Fatal during onCreate", t)
+            showFatal(root, t)
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun startKiosk(root: FrameLayout) {
         try {
             val mediaCache = MediaCache(applicationContext)
 
@@ -112,6 +132,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleMediaSync() {
+        // De automatische WorkManager-init is in de manifest uitgeschakeld
+        // (crasht op sommige signage-firmwares tijdens het opstarten van het
+        // proces); initialiseer hier handmatig, binnen ons eigen vangnet.
+        try {
+            WorkManager.initialize(applicationContext, Configuration.Builder().build())
+        } catch (_: IllegalStateException) {
+            // Al geïnitialiseerd — prima.
+        }
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -129,6 +158,34 @@ class MainActivity : AppCompatActivity() {
                 .setConstraints(constraints)
                 .build()
         )
+    }
+
+    /** Toont de stacktrace van de vorige crash; tikken op het scherm start de kiosk alsnog. */
+    private fun showCrashReport(root: FrameLayout, trace: String) {
+        root.removeAllViews()
+        val tv = TextView(this).apply {
+            text = "De app is de vorige keer onverwacht gestopt.\n" +
+                "Maak een foto van dit scherm en stuur die door.\n" +
+                "Tik op het scherm om de kiosk te starten.\n\n" + trace
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xFF0056A3.toInt())
+            textSize = 13f
+            setPadding(48, 48, 48, 48)
+            movementMethod = android.text.method.ScrollingMovementMethod()
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        tv.setOnClickListener {
+            root.removeAllViews()
+            try {
+                startKiosk(root)
+            } catch (t: Throwable) {
+                showFatal(root, t)
+            }
+        }
+        root.addView(tv)
     }
 
     private fun showFatal(root: FrameLayout, t: Throwable) {
