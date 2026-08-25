@@ -44,11 +44,14 @@ jobs:
           # originals again.
           python3 -m pip install --quiet pillow
           python3 - <<'EOF'
-          import os, sys
+          import io, os, sys
           from PIL import Image, ImageOps
 
-          MAX_DIM = 3840
-          RECOMPRESS_OVER = 2_500_000  # bytes; leave already-small files untouched
+          # 1920px is genoeg voor de kiosk (op TV-kijkafstand onzichtbaar
+          # verschil met 4K) en houdt elke foto op een paar honderd KB.
+          MAX_DIM = 1920
+          TARGET_BYTES = 700_000  # zakt in kwaliteit tot de foto hieronder komt
+          QUALITY_STEPS = [82, 72, 62]
           exts = {'.jpg': 'JPEG', '.jpeg': 'JPEG', '.png': 'PNG', '.webp': 'WEBP'}
           failed = []
 
@@ -63,18 +66,26 @@ jobs:
                       with Image.open(path) as im:
                           im = ImageOps.exif_transpose(im)
                           needs_resize = max(im.size) > MAX_DIM
-                          if not needs_resize and size <= RECOMPRESS_OVER:
+                          if not needs_resize and size <= TARGET_BYTES:
                               continue
                           if needs_resize:
                               im.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)
                           if fmt == 'JPEG' and im.mode not in ('RGB', 'L'):
                               im = im.convert('RGB')
-                          kwargs = {'optimize': True}
-                          if fmt in ('JPEG', 'WEBP'):
-                              kwargs['quality'] = 82
-                          if fmt == 'JPEG':
-                              kwargs['progressive'] = True
-                          im.save(path, fmt, **kwargs)
+                          data = None
+                          for q in QUALITY_STEPS:
+                              kwargs = {'optimize': True}
+                              if fmt in ('JPEG', 'WEBP'):
+                                  kwargs['quality'] = q
+                              if fmt == 'JPEG':
+                                  kwargs['progressive'] = True
+                              buf = io.BytesIO()
+                              im.save(buf, fmt, **kwargs)
+                              data = buf.getvalue()
+                              if len(data) <= TARGET_BYTES or fmt == 'PNG':
+                                  break
+                          with open(path, 'wb') as f:
+                              f.write(data)
                       print(f'{path}: {size//1024} KB -> {os.path.getsize(path)//1024} KB')
                   except Exception as e:
                       failed.append(path)
