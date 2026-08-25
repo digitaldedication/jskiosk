@@ -356,11 +356,15 @@
       }
     }
 
-    // Huidige slide + beide buren alvast laden, zodat swipen direct beeld geeft.
+    // Huidige slide + twee buren aan elke kant alvast laden, zodat swipen
+    // direct beeld geeft — ook op tragere hardware die even nodig heeft om
+    // een 4K-foto te decoderen.
     function hydrateAround(index) {
       hydrateSlide(index);
       hydrateSlide(index + 1);
       hydrateSlide(index - 1);
+      hydrateSlide(index + 2);
+      hydrateSlide(index - 2);
     }
 
     function updateSlide() {
@@ -502,10 +506,29 @@
     // de nieuwste inhoud opgehaald. De Android-APK heeft zijn eigen native
     // cache en slaat dit over (WebView meldt zich met "; wv)" in de UA).
     (function setupOfflineCache() {
+      const badge = document.getElementById('syncStatus');
+
+      // In de APK meldt de native cache zijn voortgang via de KioskApp-brug:
+      // toon "Media downloaden… x/y" tot alles op schijf staat. Daarna is
+      // internet alleen nog nodig voor nieuwe uploads.
+      if (window.KioskApp && KioskApp.cacheStatus) {
+        const poll = setInterval(() => {
+          try {
+            const s = JSON.parse(KioskApp.cacheStatus());
+            if (s.total > 0 && s.cached < s.total) {
+              badge.textContent = `Media downloaden… ${s.cached}/${s.total}`;
+              badge.classList.add('visible');
+            } else {
+              badge.classList.remove('visible');
+              if (s.total > 0) clearInterval(poll);
+            }
+          } catch (e) { /* brug even niet beschikbaar */ }
+        }, 2000);
+        return;
+      }
+
       const isWebView = /; wv\)/.test(navigator.userAgent);
       if (isWebView || !('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
-
-      const badge = document.getElementById('syncStatus');
       navigator.serviceWorker.addEventListener('message', (e) => {
         const msg = e.data || {};
         if (msg.type === 'sync-progress' && msg.total > 0) {
