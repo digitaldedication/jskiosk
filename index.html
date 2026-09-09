@@ -217,6 +217,12 @@
     const CATEGORIES = ['infra', 'groen', 'sport'];
     const BASE = window.location.href.replace(/\/[^/]*$/, '');
     const IMAGE_DELAY = 7000;
+    // Hoe lang een video mag doen over starten, en hoe vaak daarna wordt
+    // gecontroleerd of hij nog vooruit loopt.
+    const VIDEO_START_TIMEOUT = 9000;
+    const VIDEO_STALL_CHECK = 5000;
+    // Extra rondes voor een video die nog aan het downloaden is (eerste sync).
+    const VIDEO_LOAD_GRACE = 4;
 
     // ===== STATE =====
     let currentCategory = null;
@@ -224,6 +230,8 @@
     let mediaItems = [];
     let autoplayTimer = null;
     let userSwiped = false;
+    let slideToken = 0;
+    let videoWatchdog = null;
 
     // ===== KIOSK EXIT =====
     let logoTaps = 0;
@@ -334,7 +342,7 @@
           : (isVideo ? '' : cleanLabel(item.label));
         let mediaEl;
         if (isVideo) {
-          mediaEl = `<video class="media" data-index="${i}" playsinline preload="auto" data-src="${src}"></video>`;
+          mediaEl = `<video class="media" data-index="${i}" playsinline preload="none" data-src="${src}"></video>`;
         } else {
           mediaEl = `<img class="media" data-src="${src}" alt="${escapeHtml(item.label)}" draggable="false" decoding="async">`;
         }
@@ -345,12 +353,13 @@
       }).join('');
     }
 
-    function hydrateSlide(index) {
+    /** Alleen foto's vooruit laden: video's kosten een hardware-decoder. */
+    function hydrateImage(index) {
       const wrapper = document.getElementById('slideWrapper');
       const n = wrapper.children.length;
       if (n === 0) return;
       const slide = wrapper.children[((index % n) + n) % n];
-      const media = slide && slide.querySelector('.media');
+      const media = slide && slide.querySelector('img.media');
       if (media && !media.src && media.dataset.src) {
         media.src = media.dataset.src;
       }
@@ -358,33 +367,122 @@
 
     // Huidige slide + twee buren aan elke kant alvast laden, zodat swipen
     // direct beeld geeft — ook op tragere hardware die even nodig heeft om
-    // een 4K-foto te decoderen.
+    // een foto te decoderen.
     function hydrateAround(index) {
-      hydrateSlide(index);
-      hydrateSlide(index + 1);
-      hydrateSlide(index - 1);
-      hydrateSlide(index + 2);
-      hydrateSlide(index - 2);
+      hydrateImage(index);
+      hydrateImage(index + 1);
+      hydrateImage(index - 1);
+      hydrateImage(index + 2);
+      hydrateImage(index - 2);
+    }
+
+    /**
+     * Koppel elke video los behalve die van slide `keepIndex`. Het TV-bord
+     * heeft één hardware video-decoder; een gepauzeerde video met een src
+     * houdt die bezet, waardoor de vólgende video niet meer start (grijs
+     * scherm met play-knop). removeAttribute + load() geeft de decoder vrij.
+     */
+    function releaseVideos(keepIndex) {
+      const wrapper = document.getElementById('slideWrapper');
+      Array.prototype.forEach.call(wrapper.children, (slide, i) => {
+        const v = slide.querySelector('video');
+        if (!v || i === keepIndex) return;
+        try {
+          v.onended = null;
+          v.onerror = null;
+          v.pause();
+          if (v.getAttribute('src')) {
+            v.removeAttribute('src');
+            v.load();
+          }
+        } catch (e) { /* decoder al vrij */ }
+      });
+    }
+
+    function clearVideoWatchdog() {
+      if (videoWatchdog) { clearTimeout(videoWatchdog); videoWatchdog = null; }
     }
 
     function updateSlide() {
       const wrapper = document.getElementById('slideWrapper');
+      // Elke slidewissel krijgt een eigen token, zodat een watchdog van een
+      // vorige slide nooit de huidige kan laten doorspringen.
+      slideToken++;
+      const token = slideToken;
+      clearVideoWatchdog();
+
       hydrateAround(currentIndex);
       wrapper.style.transform = `translateX(-${currentIndex * 100}%)`;
+      releaseVideos(currentIndex);
 
-      // Pause all videos
-      wrapper.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; });
-
-      // Play current if video
       const currentSlide = wrapper.children[currentIndex];
-      const video = currentSlide?.querySelector('video');
-      if (video) {
-        video.play();
-        // Listen for video end
-        video.onended = () => {
-          setTimeout(() => advanceSlide(), 500);
-        };
+      const video = currentSlide && currentSlide.querySelector('video');
+      if (!video) return;
+
+      const next = () => {
+        if (token !== slideToken) return;
+        clearVideoWatchdog();
+        advanceSlide();
+      };
+
+      if (!video.getAttribute('src') && video.dataset.src) {
+        video.src = video.dataset.src;
+        video.load();
       }
+      try { video.currentTime = 0; } catch (e) { /* nog niet geladen */ }
+
+      video.onended = () => setTimeout(next, 400);
+      video.onerror = () => next();
+
+      // Starten kan mislukken (decoder nog bezet, autoplay geweigerd).
+      // Probeer opnieuw, dan zonder geluid, en ga anders door naar de
+      // volgende slide in plaats van te blijven hangen.
+      const tryPlay = (attempt) => {
+        if (token !== slideToken) return;
+        const p = video.play();
+        if (!p || !p.catch) return;
+        p.catch(() => {
+          if (token !== slideToken) return;
+          if (attempt === 0) {
+            setTimeout(() => tryPlay(1), 700);
+          } else if (attempt === 1) {
+            video.muted = true;
+            setTimeout(() => tryPlay(2), 300);
+          } else {
+            next();
+          }
+        });
+      };
+      tryPlay(0);
+
+      // Watchdog: speelt de video daadwerkelijk? Zo niet (of loopt hij
+      // halverwege vast), dan gaat de kiosk vanzelf door.
+      let lastTime = 0;
+      let started = false;
+      let grace = VIDEO_LOAD_GRACE;
+      const tick = () => {
+        if (token !== slideToken) return;
+        if (video.ended) return;
+        const t = video.currentTime;
+        if (t > lastTime + 0.05) {
+          started = true;
+          lastTime = t;
+          videoWatchdog = setTimeout(tick, VIDEO_STALL_CHECK);
+          return;
+        }
+        // Nog geen voortgang. Is hij nog aan het laden (eerste sync, video
+        // komt nog van het netwerk)? Geef dan extra tijd in plaats van hem
+        // ten onrechte over te slaan.
+        const loading = video.readyState < 3 || video.networkState === 2;
+        if (loading && grace > 0) {
+          grace--;
+          videoWatchdog = setTimeout(tick, VIDEO_STALL_CHECK);
+          return;
+        }
+        console.log('kiosk: video geen voortgang (' + (started ? 'stall' : 'geen start') + '), door naar volgende');
+        next();
+      };
+      videoWatchdog = setTimeout(tick, VIDEO_START_TIMEOUT);
     }
 
     function advanceSlide() {
@@ -424,8 +522,11 @@
     // ===== BACK =====
     document.getElementById('backBtn').addEventListener('click', () => {
       clearAutoplay();
+      clearVideoWatchdog();
+      slideToken++;
       const wrapper = document.getElementById('slideWrapper');
-      wrapper.querySelectorAll('video').forEach(v => v.pause());
+      // -1 = geen enkele video behouden, zodat de decoder helemaal vrijkomt.
+      releaseVideos(-1);
       currentCategory = null;
       mediaItems = [];
       // Slides opruimen zodat geladen foto's/video's geheugen vrijgeven.
